@@ -40,22 +40,13 @@ export default async function ProjectDashboard({ params }: { params: Promise<{ i
       <div className="bg-gray-900 border border-gray-800 rounded-xl mb-6">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
           <span className="text-sm font-medium text-gray-300">Prototype preview</span>
-          <div className="flex gap-2">
-            <a
-              href={`/serve/${id}/${project.uploadPath ? project.uploadPath + '/' : ''}${project.entryPath}`}
-              target="_blank"
-              className="text-xs text-gray-500 hover:text-white transition-colors"
-            >
-              Open full ↗
-            </a>
-            <Link
-              href={`/t/${id}`}
-              target="_blank"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1 rounded-md font-medium transition-colors"
-            >
-              ▶ Test
-            </Link>
-          </div>
+          <a
+            href={`/serve/${id}/${project.uploadPath ? project.uploadPath + '/' : ''}${project.entryPath}`}
+            target="_blank"
+            className="text-xs text-gray-500 hover:text-white transition-colors"
+          >
+            Open full ↗
+          </a>
         </div>
         <div className="relative bg-gray-950 rounded-b-xl overflow-hidden" style={{ height: 400 }}>
           <iframe
