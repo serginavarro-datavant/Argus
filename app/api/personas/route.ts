@@ -16,6 +16,10 @@ export async function POST(request: Request) {
       name: body.name ?? 'New persona',
       description: body.description ?? '',
       aids: body.aids ?? [],
+      role: body.role ?? '',
+      goals: body.goals ?? '',
+      techComfort: body.techComfort ?? 'medium',
+      isPrebuilt: false,
     },
   })
   return NextResponse.json(persona)

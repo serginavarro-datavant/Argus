@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   const entryPath = findEntryHtml(workDir)
 
   const project = prisma.project.create({
-    data: { name, description, uploadPath, entryPath },
+    data: { name, description, uploadPath, entryPath, remoteBaseUrl: null },
   })
 
   fs.renameSync(extractDir, path.join(process.cwd(), 'data', 'uploads', project.id))

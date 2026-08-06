@@ -69,6 +69,7 @@ export async function POST(request: Request) {
       description: rawUrl,
       uploadPath,
       entryPath,
+      remoteBaseUrl: null,
     },
   })
 

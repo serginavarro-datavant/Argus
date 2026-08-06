@@ -17,6 +17,8 @@ export async function POST(request: Request) {
       personaId: body.personaId ?? null,
       testerName: body.testerName ?? 'Anonymous',
       endedAt: null,
+      type: 'human',
+      videoUrl: null,
     },
   })
   return NextResponse.json(session)
