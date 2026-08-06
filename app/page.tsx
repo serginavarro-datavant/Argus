@@ -28,7 +28,7 @@ export default function HomePage() {
             onClick={() => setShowUpload(true)}
             className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-4 py-1.5 rounded-md font-medium transition-colors"
           >
-            + Upload prototype
+            + New project
           </button>
         </div>
       </header>
@@ -70,13 +70,13 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
       </div>
       <div>
         <h2 className="text-white font-semibold text-lg">No prototypes yet</h2>
-        <p className="text-gray-500 text-sm mt-1">Upload a ZIP file to start testing.</p>
+        <p className="text-gray-500 text-sm mt-1">Upload a ZIP or link a GitHub repo to start testing.</p>
       </div>
       <button
         onClick={onUpload}
         className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm px-5 py-2 rounded-md font-medium transition-colors mt-2"
       >
-        Upload prototype
+        Add prototype
       </button>
     </div>
   )
@@ -106,83 +106,229 @@ function ProjectCard({ project }: { project: Project }) {
   )
 }
 
+type ModalTab = 'zip' | 'github'
+
 function UploadModal({ onClose, onCreated }: { onClose: () => void; onCreated: (p: Project) => void }) {
+  const [tab, setTab] = useState<ModalTab>('zip')
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4">
+          <h2 className="text-white font-semibold">New project</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors text-lg leading-none">✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-800 px-6">
+          <TabBtn active={tab === 'zip'} onClick={() => setTab('zip')}>ZIP upload</TabBtn>
+          <TabBtn active={tab === 'github'} onClick={() => setTab('github')}>GitHub URL</TabBtn>
+        </div>
+
+        <div className="p-6">
+          {tab === 'zip' ? (
+            <ZipForm onClose={onClose} onCreated={onCreated} />
+          ) : (
+            <GitHubForm onClose={onClose} onCreated={onCreated} />
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+        active
+          ? 'border-indigo-500 text-white'
+          : 'border-transparent text-gray-500 hover:text-gray-300'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+function ZipForm({ onClose, onCreated }: { onClose: () => void; onCreated: (p: Project) => void }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [file, setFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!file || !name.trim()) { setError('Name and ZIP file are required.'); return }
-    setUploading(true); setError('')
+    setBusy(true); setError('')
     const fd = new FormData()
     fd.append('file', file)
     fd.append('name', name.trim())
     fd.append('description', description.trim())
     const res = await fetch('/api/upload', { method: 'POST', body: fd })
-    setUploading(false)
+    setBusy(false)
     if (!res.ok) { setError('Upload failed. Make sure the file is a valid ZIP.'); return }
-    const project = await res.json()
-    onCreated(project)
+    onCreated(await res.json())
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-white font-semibold">Upload prototype</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors text-lg leading-none">✕</button>
-        </div>
+    <form onSubmit={submit} className="space-y-4">
+      <Field label="Project name">
+        <input
+          value={name} onChange={e => setName(e.target.value)}
+          placeholder="My prototype"
+          className={INPUT}
+        />
+      </Field>
 
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Project name</label>
-            <input
-              value={name} onChange={e => setName(e.target.value)}
-              placeholder="My prototype"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-indigo-500 transition-colors"
-            />
-          </div>
+      <Field label="Description (optional)">
+        <input
+          value={description} onChange={e => setDescription(e.target.value)}
+          placeholder="What does this prototype do?"
+          className={INPUT}
+        />
+      </Field>
 
-          <div>
-            <label className="block text-xs text-gray-400 mb-1.5">Description (optional)</label>
-            <input
-              value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="What does this prototype do?"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-indigo-500 transition-colors"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-400 mb-1.5">ZIP file</label>
-            <div
-              onClick={() => fileRef.current?.click()}
-              className="border-2 border-dashed border-gray-700 hover:border-indigo-500/50 rounded-lg p-6 text-center cursor-pointer transition-colors"
-            >
-              {file ? (
-                <div className="text-sm text-gray-300">{file.name} <span className="text-gray-600">({(file.size / 1024 / 1024).toFixed(1)} MB)</span></div>
-              ) : (
-                <div className="text-gray-600 text-sm">Drop a ZIP or click to browse</div>
-              )}
-              <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
+      <Field label="ZIP file">
+        <div
+          onClick={() => fileRef.current?.click()}
+          className="border-2 border-dashed border-gray-700 hover:border-indigo-500/50 rounded-lg p-6 text-center cursor-pointer transition-colors"
+        >
+          {file ? (
+            <div className="text-sm text-gray-300">
+              {file.name} <span className="text-gray-600">({(file.size / 1024 / 1024).toFixed(1)} MB)</span>
             </div>
-          </div>
+          ) : (
+            <div className="text-gray-600 text-sm">Drop a ZIP or click to browse</div>
+          )}
+          <input ref={fileRef} type="file" accept=".zip" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
+        </div>
+      </Field>
 
-          {error && <p className="text-red-400 text-xs">{error}</p>}
+      {error && <p className="text-red-400 text-xs">{error}</p>}
 
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition-colors">
-              Cancel
-            </button>
-            <button type="submit" disabled={uploading} className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm py-2 rounded-lg font-medium transition-colors">
-              {uploading ? 'Uploading…' : 'Upload'}
-            </button>
-          </div>
-        </form>
+      <FormActions onClose={onClose} busy={busy} label="Upload" />
+    </form>
+  )
+}
+
+function GitHubForm({ onClose, onCreated }: { onClose: () => void; onCreated: (p: Project) => void }) {
+  const [repoUrl, setRepoUrl] = useState('')
+  const [name, setName] = useState('')
+  const [branch, setBranch] = useState('')
+  const [subpath, setSubpath] = useState('')
+  const [token, setToken] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!repoUrl.trim()) { setError('GitHub URL is required.'); return }
+    setBusy(true); setError('')
+    const res = await fetch('/api/ingest-repo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repoUrl: repoUrl.trim(),
+        name: name.trim() || undefined,
+        branch: branch.trim() || undefined,
+        subpath: subpath.trim() || undefined,
+        token: token.trim() || undefined,
+      }),
+    })
+    setBusy(false)
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setError(body.error ?? 'Failed to import repository.')
+      return
+    }
+    onCreated(await res.json())
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <Field label="GitHub URL">
+        <input
+          value={repoUrl} onChange={e => setRepoUrl(e.target.value)}
+          placeholder="https://github.com/org/repo"
+          className={INPUT}
+        />
+      </Field>
+
+      <Field label="Project name (optional)">
+        <input
+          value={name} onChange={e => setName(e.target.value)}
+          placeholder="Defaults to repo name"
+          className={INPUT}
+        />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Branch (optional)">
+          <input
+            value={branch} onChange={e => setBranch(e.target.value)}
+            placeholder="main"
+            className={INPUT}
+          />
+        </Field>
+        <Field label="Subpath (optional)">
+          <input
+            value={subpath} onChange={e => setSubpath(e.target.value)}
+            placeholder="dist"
+            className={INPUT}
+          />
+        </Field>
       </div>
+
+      <Field label="Token (private repos)">
+        <input
+          type="password"
+          value={token} onChange={e => setToken(e.target.value)}
+          placeholder="ghp_…"
+          className={INPUT}
+        />
+      </Field>
+
+      {busy && (
+        <p className="text-gray-500 text-xs">Cloning repository… this may take a minute.</p>
+      )}
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+
+      <FormActions onClose={onClose} busy={busy} label="Import" />
+    </form>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-400 mb-1.5">{label}</label>
+      {children}
     </div>
   )
 }
+
+function FormActions({ onClose, busy, label }: { onClose: () => void; busy: boolean; label: string }) {
+  return (
+    <div className="flex gap-2 pt-1">
+      <button
+        type="button" onClick={onClose}
+        className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition-colors"
+      >
+        Cancel
+      </button>
+      <button
+        type="submit" disabled={busy}
+        className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm py-2 rounded-lg font-medium transition-colors"
+      >
+        {busy ? `${label}ing…` : label}
+      </button>
+    </div>
+  )
+}
+
+const INPUT = 'w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-indigo-500 transition-colors'

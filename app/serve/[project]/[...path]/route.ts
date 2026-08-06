@@ -8,6 +8,7 @@ const MIME: Record<string, string> = {
   css: 'text/css; charset=utf-8',
   js: 'application/javascript; charset=utf-8',
   mjs: 'application/javascript; charset=utf-8',
+  cjs: 'application/javascript; charset=utf-8',
   json: 'application/json',
   png: 'image/png',
   jpg: 'image/jpeg',
@@ -22,7 +23,9 @@ const MIME: Record<string, string> = {
   eot: 'application/vnd.ms-fontobject',
   mp4: 'video/mp4',
   webm: 'video/webm',
-  txt: 'text/plain',
+  txt: 'text/plain; charset=utf-8',
+  xml: 'application/xml',
+  map: 'application/json',
 }
 
 function getMime(filePath: string): string {
@@ -36,29 +39,18 @@ export async function GET(
 ) {
   const { project, path: segments } = await params
 
-  // Try exact path, then with index.html appended
   const base = path.join(process.cwd(), 'data', 'uploads', project)
-
-  // Check for a single hoisted sub-directory
-  let root = base
-  if (fs.existsSync(base)) {
-    const entries = fs.readdirSync(base)
-    if (entries.length === 1 && fs.statSync(path.join(base, entries[0])).isDirectory()) {
-      root = path.join(base, entries[0])
-    }
-  }
-
   const rel = segments.join('/')
+
+  // Try exact path, then path/index.html as fallback for directory URLs
   const candidates = [
-    path.join(root, rel),
-    path.join(root, rel, 'index.html'),
     path.join(base, rel),
     path.join(base, rel, 'index.html'),
   ]
 
   for (const candidate of candidates) {
-    // Prevent path traversal
-    if (!candidate.startsWith(path.join(process.cwd(), 'data', 'uploads'))) continue
+    // Path traversal guard: resolved path must stay within data/uploads/<project>
+    if (!candidate.startsWith(base + path.sep) && candidate !== base) continue
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
       const buf = fs.readFileSync(candidate)
       return new NextResponse(buf, {
