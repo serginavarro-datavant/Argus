@@ -216,34 +216,47 @@ function ZipForm({ onClose, onCreated }: { onClose: () => void; onCreated: (p: P
   )
 }
 
+function parsePreview(url: string): string | null {
+  try {
+    const u = new URL(url.trim())
+    if (u.hostname !== 'github.com') return null
+    const parts = u.pathname.replace(/^\/|\/$/g, '').split('/')
+    if (parts.length < 2) return null
+    const repo = decodeURIComponent(parts[1])
+    const isTree = parts[2] === 'tree' || parts[2] === 'blob'
+    const branch = isTree && parts[3] ? decodeURIComponent(parts[3]) : 'main'
+    const subpath = isTree && parts.length > 4 ? parts.slice(4).map(decodeURIComponent).join('/') : ''
+    return `${repo} · ${branch}${subpath ? ` · ${subpath}` : ''}`
+  } catch { return null }
+}
+
 function GitHubForm({ onClose, onCreated }: { onClose: () => void; onCreated: (p: Project) => void }) {
-  const [repoUrl, setRepoUrl] = useState('')
+  const [url, setUrl] = useState('')
   const [name, setName] = useState('')
-  const [branch, setBranch] = useState('')
-  const [subpath, setSubpath] = useState('')
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  const preview = url.trim() ? parsePreview(url) : null
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!repoUrl.trim()) { setError('GitHub URL is required.'); return }
+    if (!url.trim()) { setError('GitHub URL is required.'); return }
+    if (!preview) { setError('Paste a github.com URL (repo or folder link).'); return }
     setBusy(true); setError('')
     const res = await fetch('/api/ingest-repo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        repoUrl: repoUrl.trim(),
+        url: url.trim(),
         name: name.trim() || undefined,
-        branch: branch.trim() || undefined,
-        subpath: subpath.trim() || undefined,
         token: token.trim() || undefined,
       }),
     })
     setBusy(false)
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      setError(body.error ?? 'Failed to import repository.')
+      setError(body.error ?? 'Failed to import.')
       return
     }
     onCreated(await res.json())
@@ -253,10 +266,17 @@ function GitHubForm({ onClose, onCreated }: { onClose: () => void; onCreated: (p
     <form onSubmit={submit} className="space-y-4">
       <Field label="GitHub URL">
         <input
-          value={repoUrl} onChange={e => setRepoUrl(e.target.value)}
-          placeholder="https://github.com/org/repo"
+          value={url} onChange={e => { setUrl(e.target.value); setError('') }}
+          placeholder="https://github.com/org/repo/tree/main/path/to/folder"
           className={INPUT}
+          autoFocus
         />
+        {preview && (
+          <p className="mt-1.5 text-xs text-indigo-400 font-mono">{preview}</p>
+        )}
+        {url.trim() && !preview && (
+          <p className="mt-1.5 text-xs text-amber-500">Paste a github.com link</p>
+        )}
       </Field>
 
       <Field label="Project name (optional)">
@@ -267,34 +287,17 @@ function GitHubForm({ onClose, onCreated }: { onClose: () => void; onCreated: (p
         />
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Branch (optional)">
-          <input
-            value={branch} onChange={e => setBranch(e.target.value)}
-            placeholder="main"
-            className={INPUT}
-          />
-        </Field>
-        <Field label="Subpath (optional)">
-          <input
-            value={subpath} onChange={e => setSubpath(e.target.value)}
-            placeholder="dist"
-            className={INPUT}
-          />
-        </Field>
-      </div>
-
       <Field label="Token (private repos)">
         <input
           type="password"
           value={token} onChange={e => setToken(e.target.value)}
-          placeholder="ghp_…"
+          placeholder="ghp_… · or set GITHUB_TOKEN in .env"
           className={INPUT}
         />
       </Field>
 
       {busy && (
-        <p className="text-gray-500 text-xs">Cloning repository… this may take a minute.</p>
+        <p className="text-gray-500 text-xs">Downloading from GitHub… this may take a moment.</p>
       )}
       {error && <p className="text-red-400 text-xs">{error}</p>}
 
