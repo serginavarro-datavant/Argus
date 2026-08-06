@@ -34,12 +34,26 @@ function getMime(filePath: string): string {
   return MIME[ext] ?? 'application/octet-stream'
 }
 
+function injectAxeRunner(html: string): string {
+  const script = `
+<script src="/api/axe-runtime"></script>
+<script>
+(function(){var t=0;function r(){if(typeof axe==='undefined'){if(++t<40){setTimeout(r,250);return;}}
+axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','best-practice']},resultTypes:['violations','passes']})
+.then(function(res){window.parent.postMessage({type:'argus-axe-results',violations:res.violations,passCount:res.passes.length},'*');})
+.catch(function(e){window.parent.postMessage({type:'argus-axe-error',message:String(e)},'*');});}
+window.addEventListener('load',r);})();
+</script>`
+  return html.includes('</body>') ? html.replace('</body>', script + '\n</body>') : html + script
+}
+
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ project: string; path: string[] }> }
 ) {
   const { project, path: segments } = await params
   const rel = segments.join('/')
+  const injectAxe = new URL(req.url).searchParams.has('_argusAxe')
 
   // Remote-URL projects: proxy the request to the hosted prototype
   const projectRecord = prisma.project.findUnique({ where: { id: project } })
@@ -49,6 +63,10 @@ export async function GET(
       const upstream = await fetch(remoteUrl, { headers: { 'User-Agent': 'Argus/1.0' } })
       if (!upstream.ok) return new NextResponse('Not found', { status: 404 })
       const ct = upstream.headers.get('content-type') ?? getMime(rel)
+      if (injectAxe && ct.includes('text/html')) {
+        const html = injectAxeRunner(await upstream.text())
+        return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
+      }
       const body = await upstream.arrayBuffer()
       return new NextResponse(body, {
         headers: { 'Content-Type': ct, 'Cache-Control': 'no-store' },
@@ -70,10 +88,15 @@ export async function GET(
     // Path traversal guard: resolved path must stay within data/uploads/<project>
     if (!candidate.startsWith(base + path.sep) && candidate !== base) continue
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      const mime = getMime(candidate)
+      if (injectAxe && mime.includes('text/html')) {
+        const html = injectAxeRunner(fs.readFileSync(candidate, 'utf-8'))
+        return new NextResponse(html, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
+      }
       const buf = fs.readFileSync(candidate)
       return new NextResponse(buf, {
         headers: {
-          'Content-Type': getMime(candidate),
+          'Content-Type': mime,
           'Cache-Control': 'no-store',
         },
       })

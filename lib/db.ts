@@ -117,7 +117,9 @@ export interface Check {
 export interface CheckIssue {
   severity: 'high' | 'medium' | 'low'
   description: string
-  element?: string
+  element?: string       // CSS selector
+  wcagCriteria?: string  // e.g. "wcag211"
+  helpUrl?: string
 }
 
 // ─── Singleton DB connection ─────────────────────────────────────────────────
