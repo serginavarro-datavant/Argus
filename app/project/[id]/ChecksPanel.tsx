@@ -52,7 +52,7 @@ export default function ChecksPanel({ projectId, initialChecks }: { projectId: s
         <div className="p-4">
           <p className="text-gray-300 text-sm mb-4">{latest.summary}</p>
           <div className="space-y-2">
-            {latest.issues.map((issue, i) => (
+            {latest.results.map((issue, i) => (
               <div key={i} className={`flex items-start gap-3 border rounded-lg p-3 ${SEVERITY_STYLES[issue.severity]}`}>
                 <span className="text-xs font-bold uppercase tracking-wide mt-0.5 flex-shrink-0">{issue.severity}</span>
                 <div className="min-w-0">
@@ -62,7 +62,7 @@ export default function ChecksPanel({ projectId, initialChecks }: { projectId: s
               </div>
             ))}
           </div>
-          {latest.issues.length === 0 && <p className="text-green-400 text-sm">No issues found.</p>}
+          {latest.results.length === 0 && <p className="text-green-400 text-sm">No issues found.</p>}
         </div>
       ) : (
         <div className="px-4 py-8 text-center text-gray-600 text-sm">

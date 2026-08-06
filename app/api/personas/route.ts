@@ -5,19 +5,18 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('projectId')
   if (!projectId) return NextResponse.json({ error: 'Missing projectId' }, { status: 400 })
-  return NextResponse.json(prisma.session.findMany({ where: { projectId } }))
+  return NextResponse.json(prisma.persona.findMany({ where: { projectId } }))
 }
 
 export async function POST(request: Request) {
   const body = await request.json()
-  const session = prisma.session.create({
+  const persona = prisma.persona.create({
     data: {
       projectId: body.projectId,
-      scenarioId: body.scenarioId ?? null,
-      personaId: body.personaId ?? null,
-      testerName: body.testerName ?? 'Anonymous',
-      endedAt: null,
+      name: body.name ?? 'New persona',
+      description: body.description ?? '',
+      aids: body.aids ?? [],
     },
   })
-  return NextResponse.json(session)
+  return NextResponse.json(persona)
 }

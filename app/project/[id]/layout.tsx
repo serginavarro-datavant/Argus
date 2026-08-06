@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { notFound } from 'next/navigation'
 
 export default async function ProjectLayout({
@@ -10,7 +10,7 @@ export default async function ProjectLayout({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const project = db.projects.get(id)
+  const project = prisma.project.findUnique({ where: { id } })
   if (!project) notFound()
 
   return (

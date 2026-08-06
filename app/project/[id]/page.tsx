@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { formatDate, elapsed } from '@/lib/utils'
@@ -6,13 +6,13 @@ import ChecksPanel from './ChecksPanel'
 
 export default async function ProjectDashboard({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const project = db.projects.get(id)
+  const project = prisma.project.findUnique({ where: { id } })
   if (!project) notFound()
 
-  const sessions = db.sessions.list(id)
-  const scenarios = db.scenarios.list(id)
-  const checks = db.checks.list(id)
-  const comments = db.comments.listByProject(id)
+  const sessions = prisma.session.findMany({ where: { projectId: id } })
+  const scenarios = prisma.scenario.findMany({ where: { projectId: id } })
+  const checks = prisma.check.findMany({ where: { projectId: id } })
+  const comments = prisma.comment.findMany({ where: { projectId: id } })
 
   return (
     <div className="p-8">
@@ -83,7 +83,7 @@ export default async function ProjectDashboard({ params }: { params: Promise<{ i
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-gray-200 font-medium">{s.testerName}</div>
-                  <div className="text-gray-600 text-xs">{formatDate(s.startedAt)} · {s.events.length} events</div>
+                  <div className="text-gray-600 text-xs">{formatDate(s.startedAt)} · {s.path.length} events</div>
                 </div>
                 <div className={`text-xs px-2 py-0.5 rounded-full ${s.endedAt ? 'bg-green-900/40 text-green-400' : 'bg-amber-900/40 text-amber-400'}`}>
                   {s.endedAt ? `Done · ${elapsed(s.startedAt, s.endedAt)}` : 'In progress'}

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { runA11yCheck } from '@/lib/checks/a11y'
 import fs from 'fs'
 import path from 'path'
@@ -8,14 +8,14 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('projectId')
   if (!projectId) return NextResponse.json({ error: 'Missing projectId' }, { status: 400 })
-  return NextResponse.json(db.checks.list(projectId))
+  return NextResponse.json(prisma.check.findMany({ where: { projectId } }))
 }
 
 export async function POST(request: Request) {
   const body = await request.json()
   const { projectId, type = 'a11y' } = body
 
-  const project = db.projects.get(projectId)
+  const project = prisma.project.findUnique({ where: { id: projectId } })
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
   const uploadsBase = path.join(process.cwd(), 'data', 'uploads', projectId)
@@ -29,11 +29,13 @@ export async function POST(request: Request) {
 
   if (type === 'a11y') {
     const result = await runA11yCheck(html)
-    const check = db.checks.create({
-      projectId,
-      type: 'a11y',
-      summary: result.summary,
-      issues: result.issues,
+    const check = prisma.check.create({
+      data: {
+        projectId,
+        type: 'a11y',
+        summary: result.summary,
+        results: result.issues,
+      },
     })
     return NextResponse.json(check)
   }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs'
 import AdmZip from 'adm-zip'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { createId } from '@/lib/utils'
 
 function findEntryHtml(dir: string): string {
@@ -30,7 +30,6 @@ export async function POST(request: Request) {
 
   const buffer = Buffer.from(await file.arrayBuffer())
 
-  // Use a temp ID to extract, then determine paths before saving to DB
   const tempId = createId()
   const extractDir = path.join(process.cwd(), 'data', 'uploads', tempId)
   fs.mkdirSync(extractDir, { recursive: true })
@@ -43,7 +42,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid ZIP file' }, { status: 400 })
   }
 
-  // If zip had a single top-level folder, record that as the uploadPath prefix
   const entries = fs.readdirSync(extractDir)
   let workDir = extractDir
   let uploadPath = ''
@@ -57,15 +55,10 @@ export async function POST(request: Request) {
 
   const entryPath = findEntryHtml(workDir)
 
-  // Create project with resolved paths (use tempId as the actual project ID)
-  const project = db.projects.create({
-    name,
-    description,
-    uploadPath,
-    entryPath,
+  const project = prisma.project.create({
+    data: { name, description, uploadPath, entryPath },
   })
 
-  // Rename the temp extract dir to the project ID
   fs.renameSync(extractDir, path.join(process.cwd(), 'data', 'uploads', project.id))
 
   return NextResponse.json(project)

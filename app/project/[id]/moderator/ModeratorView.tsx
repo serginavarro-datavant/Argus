@@ -78,9 +78,10 @@ function SessionDetail({ session, comments, scenario }: {
   comments: Comment[]
   scenario: Scenario | null
 }) {
-  const navEvents = session.events.filter(e => e.type === 'navigation')
-  const clickEvents = session.events.filter(e => e.type === 'click')
-  const completedCount = session.completedTasks.length
+  const navEvents = session.path.filter(e => e.type === 'navigation')
+  const clickEvents = session.path.filter(e => e.type === 'click')
+  const completedTaskIndexes = session.path.filter(e => e.type === 'task_complete').map(e => e.taskIndex ?? -1)
+  const completedCount = completedTaskIndexes.length
   const taskCount = scenario?.tasks.length ?? 0
 
   return (
@@ -108,7 +109,7 @@ function SessionDetail({ session, comments, scenario }: {
           <div className="text-white font-medium text-sm">{scenario.title}</div>
           <div className="mt-3 space-y-1.5">
             {scenario.tasks.map((task, i) => {
-              const done = session.completedTasks.includes(i)
+              const done = completedTaskIndexes.includes(i)
               return (
                 <div key={task.id} className={`flex items-center gap-2 text-xs ${done ? 'text-green-400' : 'text-gray-500'}`}>
                   <span>{done ? '✓' : '○'}</span>
@@ -128,10 +129,10 @@ function SessionDetail({ session, comments, scenario }: {
             <span className="text-xs text-gray-600">{navEvents.length} pages</span>
           </div>
           <div className="p-3 space-y-1.5 max-h-64 overflow-y-auto">
-            {session.events.map((ev, i) => (
+            {session.path.map((ev, i) => (
               <EventRow key={i} event={ev} />
             ))}
-            {session.events.length === 0 && <p className="text-gray-600 text-xs p-2">No events recorded.</p>}
+            {session.path.length === 0 && <p className="text-gray-600 text-xs p-2">No events recorded.</p>}
           </div>
         </div>
 

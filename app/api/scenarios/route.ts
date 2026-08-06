@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { anthropic } from '@/lib/anthropic'
 import fs from 'fs'
 import path from 'path'
@@ -9,23 +9,24 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('projectId')
   if (!projectId) return NextResponse.json({ error: 'Missing projectId' }, { status: 400 })
-  return NextResponse.json(db.scenarios.list(projectId))
+  return NextResponse.json(prisma.scenario.findMany({ where: { projectId } }))
 }
 
 export async function POST(request: Request) {
   const body = await request.json()
   const { projectId, generate } = body
 
-  const project = db.projects.get(projectId)
+  const project = prisma.project.findUnique({ where: { id: projectId } })
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
   if (!generate) {
-    // Manual create
-    const scenario = db.scenarios.create({
-      projectId,
-      title: body.title ?? 'Untitled scenario',
-      description: body.description ?? '',
-      tasks: body.tasks ?? [],
+    const scenario = prisma.scenario.create({
+      data: {
+        projectId,
+        title: body.title ?? 'Untitled scenario',
+        description: body.description ?? '',
+        tasks: body.tasks ?? [],
+      },
     })
     return NextResponse.json(scenario)
   }
@@ -65,11 +66,13 @@ ${html || '(no HTML available — infer generic usability tasks)'}`,
   }
 
   const created = scenarios.map(s =>
-    db.scenarios.create({
-      projectId,
-      title: s.title,
-      description: s.description,
-      tasks: s.tasks.map(t => ({ ...t, id: createId() })),
+    prisma.scenario.create({
+      data: {
+        projectId,
+        title: s.title,
+        description: s.description,
+        tasks: s.tasks.map(t => ({ ...t, id: createId() })),
+      },
     })
   )
 

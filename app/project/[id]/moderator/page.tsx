@@ -1,15 +1,15 @@
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import ModeratorView from './ModeratorView'
 
 export default async function ModeratorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const project = db.projects.get(id)
+  const project = prisma.project.findUnique({ where: { id } })
   if (!project) notFound()
 
-  const sessions = db.sessions.list(id)
-  const scenarios = db.scenarios.list(id)
-  const comments = db.comments.listByProject(id)
+  const sessions = prisma.session.findMany({ where: { projectId: id } })
+  const scenarios = prisma.scenario.findMany({ where: { projectId: id } })
+  const comments = prisma.comment.findMany({ where: { projectId: id } })
 
   return (
     <ModeratorView

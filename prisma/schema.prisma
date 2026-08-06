@@ -1,0 +1,103 @@
+// This is the canonical data model for Argus.
+// To activate: npm i -D prisma && npx prisma migrate dev && npx prisma generate
+// Until the prisma CLI is available, lib/db.ts uses Node 24's node:sqlite
+// with the same API surface backed by the migration SQL in migrations/0001_init.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../data/dev.db"
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @default("")
+  uploadPath  String   @default("")
+  entryPath   String   @default("index.html")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  scenarios Scenario[]
+  personas  Persona[]
+  sessions  Session[]
+  checks    Check[]
+  comments  Comment[]
+}
+
+model Scenario {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String   @default("")
+  tasks       Json     // Array<{id, title, description}>
+  createdAt   DateTime @default(now())
+
+  sessions Session[]
+}
+
+model Persona {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  description String   @default("")
+  aids        Json     // Array<string> — hints shown to the tester
+  createdAt   DateTime @default(now())
+
+  sessions Session[]
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenarioId String?
+  scenario   Scenario? @relation(fields: [scenarioId], references: [id])
+  personaId  String?
+  persona    Persona?  @relation(fields: [personaId], references: [id])
+  testerName String    @default("Anonymous")
+  path       Json      @default("[]") // Array<PathEvent>
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+
+  taskResults TaskResult[]
+  comments    Comment[]
+}
+
+model TaskResult {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  taskIndex Int
+  completed Boolean  @default(false)
+  rating    Json     @default("{}") // {timeMs, clicks, notes}
+  createdAt DateTime @default(now())
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  text      String
+  selector  String   @default("")
+  rect      Json     @default("{}") // {x, y, width, height}
+  pageUrl   String   @default("")
+  createdAt DateTime @default(now())
+}
+
+model Check {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      String   // "a11y" | "copy" | "ds"
+  summary   String   @default("")
+  results   Json     @default("[]") // Array<{severity, description, element?}>
+  createdAt DateTime @default(now())
+}

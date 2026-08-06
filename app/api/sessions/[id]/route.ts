@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { prisma } from '@/lib/db'
 import type { PathEvent } from '@/lib/types'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const session = db.sessions.get(id)
+  const session = prisma.session.findUnique({ where: { id } })
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(session)
 }
@@ -12,16 +12,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await request.json()
-  const session = db.sessions.get(id)
+  const session = prisma.session.findUnique({ where: { id } })
   if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const updates: Partial<typeof session> = {}
+  const updates: { path?: PathEvent[]; endedAt?: string | null } = {}
   if (body.events !== undefined) {
-    updates.events = [...session.events, ...(body.events as PathEvent[])]
+    updates.path = [...session.path, ...(body.events as PathEvent[])]
+  }
+  if (body.path !== undefined) {
+    updates.path = [...session.path, ...(body.path as PathEvent[])]
   }
   if (body.endedAt !== undefined) updates.endedAt = body.endedAt
-  if (body.completedTasks !== undefined) updates.completedTasks = body.completedTasks
 
-  const updated = db.sessions.update(id, updates)
+  const updated = prisma.session.update({ where: { id }, data: updates })
   return NextResponse.json(updated)
 }
