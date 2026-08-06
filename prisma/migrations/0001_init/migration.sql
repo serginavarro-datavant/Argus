@@ -58,14 +58,19 @@ CREATE TABLE IF NOT EXISTS "TaskResult" (
 );
 
 CREATE TABLE IF NOT EXISTS "Comment" (
-  "id"        TEXT NOT NULL PRIMARY KEY,
-  "sessionId" TEXT NOT NULL,
-  "projectId" TEXT NOT NULL,
-  "text"      TEXT NOT NULL,
-  "selector"  TEXT NOT NULL DEFAULT '',
-  "rect"      TEXT NOT NULL DEFAULT '{}',
-  "pageUrl"   TEXT NOT NULL DEFAULT '',
-  "createdAt" TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  "id"         TEXT NOT NULL PRIMARY KEY,
+  "sessionId"  TEXT NOT NULL,
+  "projectId"  TEXT NOT NULL,
+  "text"       TEXT NOT NULL,
+  "selector"   TEXT NOT NULL DEFAULT '',
+  "rect"       TEXT NOT NULL DEFAULT '{}',
+  "pageUrl"    TEXT NOT NULL DEFAULT '',
+  "ox"         REAL,
+  "oy"         REAL,
+  "label"      TEXT NOT NULL DEFAULT '',
+  "screen"     TEXT NOT NULL DEFAULT '',
+  "scenarioId" TEXT,
+  "createdAt"  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   FOREIGN KEY ("sessionId") REFERENCES "Session"("id")  ON DELETE CASCADE,
   FOREIGN KEY ("projectId") REFERENCES "Project"("id")
 );

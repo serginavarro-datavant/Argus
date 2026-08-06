@@ -20,6 +20,11 @@ export async function POST(request: Request) {
       selector: body.selector ?? '',
       rect: body.rect ?? { x: 0, y: 0, width: 0, height: 0 },
       pageUrl: body.pageUrl ?? '',
+      ox: body.ox ?? null,
+      oy: body.oy ?? null,
+      label: body.label ?? '',
+      screen: body.screen ?? '',
+      scenarioId: body.scenarioId ?? null,
     },
   })
   return NextResponse.json(comment)

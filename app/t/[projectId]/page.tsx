@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
 import type { Project, Scenario } from '@/lib/types'
+import { ArgusLogo } from '@/components/ArgusLogo'
 
 export default function TesterEntry() {
   const params = useParams<{ projectId: string }>()
@@ -54,7 +55,7 @@ export default function TesterEntry() {
       <div className="w-full max-w-md">
         {/* Brand */}
         <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500 flex items-center justify-center text-white font-bold text-xl mx-auto mb-4">A</div>
+          <div className="flex justify-center mb-4"><ArgusLogo size={40} /></div>
           <h1 className="text-white font-semibold text-lg">{project.name}</h1>
           <p className="text-gray-500 text-sm mt-1">User testing session</p>
         </div>

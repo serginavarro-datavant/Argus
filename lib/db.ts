@@ -92,6 +92,11 @@ export interface Comment {
   selector: string
   rect: { x: number; y: number; width: number; height: number }
   pageUrl: string
+  ox: number | null
+  oy: number | null
+  label: string
+  screen: string
+  scenarioId: string | null
   createdAt: string
 }
 
@@ -118,6 +123,16 @@ function openDB(): DatabaseSync {
   mkdirSync(DATA_DIR, { recursive: true })
   const db = new DatabaseSync(path.join(DATA_DIR, 'dev.db'))
   db.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;')
+  // Additive column migrations — safe to re-run (throws if column already exists, which we ignore)
+  for (const stmt of [
+    `ALTER TABLE "Comment" ADD COLUMN "ox" REAL`,
+    `ALTER TABLE "Comment" ADD COLUMN "oy" REAL`,
+    `ALTER TABLE "Comment" ADD COLUMN "label" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "Comment" ADD COLUMN "screen" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "Comment" ADD COLUMN "scenarioId" TEXT`,
+  ]) {
+    try { db.exec(stmt) } catch { /* column already exists */ }
+  }
   return db
 }
 
@@ -183,7 +198,7 @@ const taskResultStmts = {
 const commentStmts = {
   findBySession: db.prepare(`SELECT * FROM "Comment" WHERE "sessionId"=? ORDER BY "createdAt" ASC`),
   findByProject: db.prepare(`SELECT * FROM "Comment" WHERE "projectId"=? ORDER BY "createdAt" ASC`),
-  insert:        db.prepare(`INSERT INTO "Comment"("id","sessionId","projectId","text","selector","rect","pageUrl","createdAt") VALUES (?,?,?,?,?,?,?,?)`),
+  insert:        db.prepare(`INSERT INTO "Comment"("id","sessionId","projectId","text","selector","rect","pageUrl","ox","oy","label","screen","scenarioId","createdAt") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`),
 }
 
 // ─── Check ────────────────────────────────────────────────────────────────────
@@ -336,7 +351,12 @@ export const prisma = {
     },
     create({ data }: { data: Omit<Comment, 'id' | 'createdAt'> }): Comment {
       const id = createId(); const ts = now()
-      commentStmts.insert.run(id, data.sessionId, data.projectId, data.text, data.selector ?? '', js(data.rect ?? {}), data.pageUrl ?? '', ts)
+      commentStmts.insert.run(
+        id, data.sessionId, data.projectId, data.text,
+        data.selector ?? '', js(data.rect ?? {}), data.pageUrl ?? '',
+        data.ox ?? null, data.oy ?? null, data.label ?? '', data.screen ?? '',
+        data.scenarioId ?? null, ts,
+      )
       return { ...data, id, createdAt: ts }
     },
   },
