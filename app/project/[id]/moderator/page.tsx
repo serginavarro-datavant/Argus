@@ -7,16 +7,18 @@ export default async function ModeratorPage({ params }: { params: Promise<{ id: 
   const project = prisma.project.findUnique({ where: { id } })
   if (!project) notFound()
 
-  const sessions = prisma.session.findMany({ where: { projectId: id } })
-  const scenarios = prisma.scenario.findMany({ where: { projectId: id } })
-  const comments = prisma.comment.findMany({ where: { projectId: id } })
+  const sessions     = prisma.session.findMany({ where: { projectId: id } })
+  const scenarios    = prisma.scenario.findMany({ where: { projectId: id } })
+  const comments     = prisma.comment.findMany({ where: { projectId: id } })
+  const taskResults  = prisma.taskResult.findMany({ where: { projectId: id } })
 
   return (
     <ModeratorView
-      projectId={id}
+      project={project}
       initialSessions={sessions}
       initialScenarios={scenarios}
       initialComments={comments}
+      initialTaskResults={taskResults}
     />
   )
 }

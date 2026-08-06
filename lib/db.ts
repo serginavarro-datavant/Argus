@@ -189,8 +189,9 @@ const sessionStmts = {
 // ─── TaskResult ───────────────────────────────────────────────────────────────
 
 const taskResultStmts = {
-  findBySession: db.prepare(`SELECT * FROM "TaskResult" WHERE "sessionId"=? ORDER BY "taskIndex" ASC`),
-  upsert:        db.prepare(`INSERT INTO "TaskResult"("id","sessionId","taskIndex","completed","rating","createdAt") VALUES (?,?,?,?,?,?) ON CONFLICT("id") DO UPDATE SET "completed"=excluded."completed","rating"=excluded."rating"`),
+  findBySession:  db.prepare(`SELECT * FROM "TaskResult" WHERE "sessionId"=? ORDER BY "taskIndex" ASC`),
+  findByProject:  db.prepare(`SELECT tr.* FROM "TaskResult" tr INNER JOIN "Session" s ON tr."sessionId"=s."id" WHERE s."projectId"=? ORDER BY tr."taskIndex" ASC`),
+  upsert:         db.prepare(`INSERT INTO "TaskResult"("id","sessionId","taskIndex","completed","rating","createdAt") VALUES (?,?,?,?,?,?) ON CONFLICT("id") DO UPDATE SET "completed"=excluded."completed","rating"=excluded."rating"`),
 }
 
 // ─── Comment ─────────────────────────────────────────────────────────────────
@@ -211,7 +212,7 @@ const checkStmts = {
 // ─── Row mappers ─────────────────────────────────────────────────────────────
 
 function mapProject(r: Record<string, unknown>): Project {
-  return r as unknown as Project
+  return { ...r } as unknown as Project
 }
 
 function mapScenario(r: Record<string, unknown>): Scenario {
@@ -327,8 +328,10 @@ export const prisma = {
   },
 
   taskResult: {
-    findMany({ where }: { where: { sessionId: string } }): TaskResult[] {
-      return (taskResultStmts.findBySession.all(where.sessionId) as Record<string, unknown>[]).map(mapTaskResult)
+    findMany({ where }: { where: { sessionId?: string; projectId?: string } }): TaskResult[] {
+      if (where.sessionId) return (taskResultStmts.findBySession.all(where.sessionId) as Record<string, unknown>[]).map(mapTaskResult)
+      if (where.projectId) return (taskResultStmts.findByProject.all(where.projectId) as Record<string, unknown>[]).map(mapTaskResult)
+      return []
     },
     upsert({ where, create, update }: { where: { id: string }; create: Omit<TaskResult, 'id' | 'createdAt'>; update: Partial<TaskResult> }): TaskResult {
       const id = where.id || createId(); const ts = now()

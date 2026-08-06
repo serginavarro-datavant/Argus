@@ -1,5 +1,6 @@
-// Parent-side comment layer. Injects only a hover ring into the iframe DOM;
-// all pin dots and popovers live in the PARENT document as position:fixed elements.
+// Parent-side comment layer (active + read-only variants).
+// Active layer injects a hover ring into the iframe DOM; pins and popovers are in parent.
+// Read-only layer places pre-loaded pins without click-to-create.
 
 export interface Pin {
   id: string
@@ -63,6 +64,112 @@ function popoverPos(px: number, py: number): { left: number; top: number } {
   if (top + PH > window.innerHeight - M) top = window.innerHeight - PH - M
   return { left, top }
 }
+
+// ── Read-only overlay ──────────────────────────────────────────────────────────
+
+export interface ReadOnlyPin {
+  id: string
+  selector: string
+  fractX: number
+  fractY: number
+  text: string
+  pageUrl: string
+  color: string
+  number: number
+}
+
+export interface ReadOnlyLayerHandle {
+  setPins(pins: ReadOnlyPin[]): void
+  reposition(): void
+  destroy(): void
+}
+
+function normUrl(u: string): string {
+  return u.replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '') || '/'
+}
+
+export function mountReadOnlyLayer(
+  iframe: HTMLIFrameElement,
+  opts: { onPinClick?: (id: string) => void } = {},
+): ReadOnlyLayerHandle {
+  let pins: ReadOnlyPin[] = []
+  const dots = new Map<string, HTMLDivElement>()
+
+  const layer = document.createElement('div')
+  layer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:999990;overflow:hidden;'
+  document.body.appendChild(layer)
+
+  const ro = new ResizeObserver(reposition)
+  ro.observe(iframe)
+  window.addEventListener('scroll', reposition, { passive: true })
+  iframe.addEventListener('load', () => {
+    try { iframe.contentWindow?.addEventListener('scroll', reposition, { passive: true }) } catch {}
+    reposition()
+  })
+
+  function currentUrl(): string {
+    try { return iframe.contentWindow?.location?.href ?? '' } catch { return '' }
+  }
+
+  function getPos(pin: ReadOnlyPin): { x: number; y: number } | null {
+    try {
+      const el = iframe.contentDocument?.querySelector(pin.selector)
+      if (!el) return null
+      const iRect = iframe.getBoundingClientRect()
+      const eRect = el.getBoundingClientRect()
+      return { x: iRect.left + eRect.left + pin.fractX * eRect.width, y: iRect.top + eRect.top + pin.fractY * eRect.height }
+    } catch { return null }
+  }
+
+  function positionDot(dot: HTMLDivElement, pin: ReadOnlyPin) {
+    const cur = normUrl(currentUrl())
+    const pinUrl = normUrl(pin.pageUrl)
+    if (cur && pinUrl && cur !== pinUrl) { dot.style.display = 'none'; return }
+    const pos = getPos(pin)
+    if (!pos) { dot.style.display = 'none'; return }
+    const iRect = iframe.getBoundingClientRect()
+    const inView = pos.x >= iRect.left && pos.x <= iRect.right && pos.y >= iRect.top && pos.y <= iRect.bottom
+    dot.style.display = inView ? 'flex' : 'none'
+    dot.style.left = pos.x + 'px'
+    dot.style.top = pos.y + 'px'
+  }
+
+  function renderDot(pin: ReadOnlyPin) {
+    dots.get(pin.id)?.remove()
+    const dot = document.createElement('div')
+    dot.title = pin.text
+    dot.style.cssText = `position:fixed;width:20px;height:20px;background:${pin.color};border:2px solid rgba(255,255,255,0.9);border-radius:50%;color:#fff;font-size:9px;font-weight:700;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.6);transform:translate(-50%,-50%);pointer-events:all;z-index:999991;`
+    dot.textContent = String(pin.number)
+    dot.addEventListener('click', (e) => { e.stopPropagation(); opts.onPinClick?.(pin.id) })
+    layer.appendChild(dot)
+    dots.set(pin.id, dot)
+    positionDot(dot, pin)
+  }
+
+  function reposition() {
+    for (const [id, dot] of dots) {
+      const pin = pins.find(p => p.id === id)
+      if (pin) positionDot(dot, pin)
+    }
+  }
+
+  return {
+    setPins(newPins: ReadOnlyPin[]) {
+      const newIds = new Set(newPins.map(p => p.id))
+      for (const [id, dot] of dots) { if (!newIds.has(id)) { dot.remove(); dots.delete(id) } }
+      pins = newPins
+      for (const pin of pins) renderDot(pin)
+    },
+    reposition,
+    destroy() {
+      ro.disconnect()
+      window.removeEventListener('scroll', reposition)
+      layer.remove()
+    },
+  }
+}
+
+// ── Active (write) layer ───────────────────────────────────────────────────────
 
 export function mountCommentLayer(
   iframe: HTMLIFrameElement,
