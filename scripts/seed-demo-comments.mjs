@@ -8,6 +8,17 @@ const db = new DatabaseSync('data/dev.db')
 const PROJECT_ID = 'fjbpvnumsh77ah1'
 const PAGE_URL = 'http://localhost:3000/serve/fjbpvnumsh77ah1/index.html'
 
+// Build a deep-link URL that encodes a click sequence via ?_argusNav=
+function deepUrl(...navSelectors) {
+  const nav = encodeURIComponent(navSelectors.join('|'))
+  return `${PAGE_URL}?_argusNav=${nav}`
+}
+
+// Build a deep-link URL that navigates via SPA hash (no page reload)
+function hashUrl(hash) {
+  return `${PAGE_URL}?_argusHash=${encodeURIComponent(hash)}`
+}
+
 function id() {
   return Math.random().toString(36).slice(2, 10) + 'msh' + Math.random().toString(36).slice(2, 8)
 }
@@ -88,11 +99,50 @@ const comments = [
     ox: 0.85, oy: 0.5,
     createdAt: new Date(now - 24 * 60 * 60 * 1000 + 11 * 60 * 1000).toISOString(),
   },
+
+  // ── Deep-link comments: inside wizard steps (hash nav jumps directly to each step) ──
+  // Step 1 — Input  (#prototype?v=create&step=input)
+  {
+    sessionId: sessions[0].id,
+    text: "The 'Import data' button wasn't obvious as the starting point — I expected a visible dropzone or inline prompt, not a button tucked in the corner",
+    selector: '[data-hl="input-grid"]',
+    ox: 0.5, oy: 0.3,
+    screen: hashUrl('#prototype?v=create&step=input'),
+    createdAt: new Date(now - 72 * 60 * 60 * 1000 + 9 * 60 * 1000).toISOString(),
+  },
+  // Step 2 — Output  (#prototype?v=create&step=output)
+  {
+    sessionId: sessions[1].id,
+    text: "I wasn't sure which output columns were required vs optional — some kind of indicator (asterisk, badge) would help",
+    selector: '[data-hl="output-grid"]',
+    ox: 0.5, oy: 0.3,
+    screen: hashUrl('#prototype?v=create&step=output'),
+    createdAt: new Date(now - 48 * 60 * 60 * 1000 + 8 * 60 * 1000).toISOString(),
+  },
+  // Step 3 — Format  (#prototype?v=create&step=format)
+  {
+    sessionId: sessions[2].id,
+    text: "Format options are overwhelming — there are 12 choices and no description of what each one does. I had to guess",
+    selector: '.fmt-card',
+    ox: 0.5, oy: 0.3,
+    screen: hashUrl('#prototype?v=create&step=format'),
+    createdAt: new Date(now - 24 * 60 * 60 * 1000 + 15 * 60 * 1000).toISOString(),
+  },
+  // Step 4 — Run Test  (#prototype?act=run-test)
+  {
+    sessionId: sessions[1].id,
+    text: "'Run Test' — I didn't realize this was optional until after I'd already waited 30 seconds for it to complete. The 'Optional' label is too easy to miss",
+    selector: '.rt-card',
+    ox: 0.5, oy: 0.05,
+    screen: hashUrl('#prototype?act=run-test'),
+    createdAt: new Date(now - 48 * 60 * 60 * 1000 + 10 * 60 * 1000).toISOString(),
+  },
 ]
 
 for (const c of comments) {
   const cid = id()
-  insertComment.run(cid, c.sessionId, PROJECT_ID, c.text, c.selector, PAGE_URL, c.ox, c.oy, PAGE_URL, c.createdAt)
+  const screen = c.screen ?? PAGE_URL
+  insertComment.run(cid, c.sessionId, PROJECT_ID, c.text, c.selector, PAGE_URL, c.ox, c.oy, screen, c.createdAt)
   console.log(`Inserted comment: "${c.text.substring(0, 50)}…"`)
 }
 

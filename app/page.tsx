@@ -41,12 +41,12 @@ export default function HomePage() {
       {/* ── Sidebar ───────────────────────────────────────────────────────────── */}
       <aside className="w-52 flex-shrink-0 flex flex-col border-r" style={{ background: '#0e0e18', borderColor: '#1c1c2b' }}>
         {/* Logo */}
-        <div className="px-4 py-5 border-b" style={{ borderColor: '#1c1c2b' }}>
-          <div className="flex items-center gap-2.5">
-            <ArgusLogo size={26} />
+        <div className="px-4 py-4 border-b" style={{ borderColor: '#1c1c2b' }}>
+          <div className="flex items-center gap-3">
+            <ArgusLogo size={36} />
             <div>
-              <div className="text-white font-semibold text-sm tracking-tight leading-none">Argus</div>
-              <div className="text-xs mt-0.5 leading-none" style={{ color: '#44445e' }}>Prototype Testing</div>
+              <div className="text-white font-semibold text-[15px] leading-tight tracking-tight">Argus</div>
+              <div className="text-[13px] leading-tight font-bold" style={{ color: '#5c5cbb' }}>datavant</div>
             </div>
           </div>
         </div>

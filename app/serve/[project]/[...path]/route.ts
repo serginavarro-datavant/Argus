@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/db'
 import fs from 'fs'
 import path from 'path'
 
@@ -38,9 +39,26 @@ export async function GET(
   { params }: { params: Promise<{ project: string; path: string[] }> }
 ) {
   const { project, path: segments } = await params
+  const rel = segments.join('/')
+
+  // Remote-URL projects: proxy the request to the hosted prototype
+  const projectRecord = prisma.project.findUnique({ where: { id: project } })
+  if (projectRecord?.remoteBaseUrl) {
+    const remoteUrl = `${projectRecord.remoteBaseUrl}/${rel}`
+    try {
+      const upstream = await fetch(remoteUrl, { headers: { 'User-Agent': 'Argus/1.0' } })
+      if (!upstream.ok) return new NextResponse('Not found', { status: 404 })
+      const ct = upstream.headers.get('content-type') ?? getMime(rel)
+      const body = await upstream.arrayBuffer()
+      return new NextResponse(body, {
+        headers: { 'Content-Type': ct, 'Cache-Control': 'no-store' },
+      })
+    } catch {
+      return new NextResponse('Upstream error', { status: 502 })
+    }
+  }
 
   const base = path.join(process.cwd(), 'data', 'uploads', project)
-  const rel = segments.join('/')
 
   // Try exact path, then path/index.html as fallback for directory URLs
   const candidates = [

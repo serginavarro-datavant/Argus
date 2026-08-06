@@ -24,6 +24,7 @@ export interface Project {
   description: string
   uploadPath: string
   entryPath: string
+  remoteBaseUrl: string | null
   createdAt: string
   updatedAt: string
 }
@@ -130,15 +131,35 @@ function openDB(): DatabaseSync {
     `ALTER TABLE "Comment" ADD COLUMN "label" TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE "Comment" ADD COLUMN "screen" TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE "Comment" ADD COLUMN "scenarioId" TEXT`,
+    `ALTER TABLE "Project" ADD COLUMN "remoteBaseUrl" TEXT`,
   ]) {
     try { db.exec(stmt) } catch { /* column already exists */ }
   }
   return db
 }
 
+const DEFAULT_PROJECTS: Array<{ id: string; name: string; description: string; remoteBaseUrl: string }> = [
+  {
+    id: 'databricks-app-default',
+    name: 'Databricks App',
+    description: 'Datavant Tokenization — Databricks integration prototype',
+    remoteBaseUrl: 'https://serginavarro-datavant.github.io/Datavant-Tokenization/Prototypes/DataBricks%20App',
+  },
+]
+
 const g = globalThis as unknown as { __argusDb?: DatabaseSync }
 if (!g.__argusDb) g.__argusDb = openDB()
 const db = g.__argusDb
+
+// Seed default projects once (idempotent — skips if id already exists)
+for (const def of DEFAULT_PROJECTS) {
+  const exists = db.prepare(`SELECT id FROM "Project" WHERE id = ?`).get(def.id)
+  if (!exists) {
+    const ts = new Date().toISOString()
+    db.prepare(`INSERT INTO "Project"(id,name,description,uploadPath,entryPath,remoteBaseUrl,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?)`)
+      .run(def.id, def.name, def.description, '', 'index.html', def.remoteBaseUrl, ts, ts)
+  }
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -212,7 +233,7 @@ const checkStmts = {
 // ─── Row mappers ─────────────────────────────────────────────────────────────
 
 function mapProject(r: Record<string, unknown>): Project {
-  return { ...r } as unknown as Project
+  return { ...r, remoteBaseUrl: r.remoteBaseUrl ?? null } as unknown as Project
 }
 
 function mapScenario(r: Record<string, unknown>): Scenario {

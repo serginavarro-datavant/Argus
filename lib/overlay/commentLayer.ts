@@ -87,7 +87,17 @@ export interface ReadOnlyLayerHandle {
 }
 
 function normUrl(u: string): string {
-  return u.replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '') || '/'
+  return u.replace(/^https?:\/\/[^/]+/, '').split(/[#?]/)[0].replace(/\/+$/, '') || '/'
+}
+
+// querySelector with fallback for :nth-of-type — CSS counts by tag among siblings,
+// which breaks when buttons live in separate parent slots. Fall back to querySelectorAll + index.
+function resolveEl(doc: Document, selector: string): Element | null {
+  const el = doc.querySelector(selector)
+  if (el) return el
+  const m = selector.match(/^(.+):nth-of-type\((\d+)\)$/)
+  if (m) return doc.querySelectorAll(m[1])[parseInt(m[2], 10) - 1] ?? null
+  return null
 }
 
 export function mountReadOnlyLayer(
@@ -116,7 +126,8 @@ export function mountReadOnlyLayer(
 
   function getPos(pin: ReadOnlyPin): { x: number; y: number } | null {
     try {
-      const el = iframe.contentDocument?.querySelector(pin.selector)
+      const doc = iframe.contentDocument
+      const el = doc ? resolveEl(doc, pin.selector) : null
       if (!el) return null
       const iRect = iframe.getBoundingClientRect()
       const eRect = el.getBoundingClientRect()
