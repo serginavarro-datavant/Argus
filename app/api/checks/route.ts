@@ -29,17 +29,22 @@ export async function POST(request: Request) {
   let summary: string
   let results: CheckIssue[]
 
-  if (type === 'copy') {
-    const r = await runCopyCheck(texts ?? [])
-    summary = r.summary
-    results = r.issues
-  } else if (type === 'ds') {
-    const r = runDSCheck(colors ?? [], fonts ?? [])
-    summary = r.summary
-    results = r.issues
-  } else {
-    summary = clientSummary ?? ''
-    results = clientResults ?? []
+  try {
+    if (type === 'copy') {
+      const r = await runCopyCheck(texts ?? [])
+      summary = r.summary
+      results = r.issues
+    } else if (type === 'ds') {
+      const r = runDSCheck(colors ?? [], fonts ?? [])
+      summary = r.summary
+      results = r.issues
+    } else {
+      summary = clientSummary ?? ''
+      results = clientResults ?? []
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 
   const check = prisma.check.create({ data: { projectId, type, summary, results } })

@@ -317,11 +317,12 @@ export default function ChecksPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId, type: 'copy', texts }),
       })
-      const check: Check = await res.json()
-      setChecks(prev => [check, ...prev.filter(c => c.id !== check.id)])
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? `Server error ${res.status}`)
+      setChecks(prev => [json as Check, ...prev.filter(c => c.id !== (json as Check).id)])
       setCopyState('done')
-    } catch {
-      setCopyError('Failed to run copy analysis.')
+    } catch (err) {
+      setCopyError(err instanceof Error ? err.message : 'Failed to run copy analysis.')
       setCopyState('error')
     }
   }
@@ -333,11 +334,12 @@ export default function ChecksPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId, type: 'ds', colors, fonts }),
       })
-      const check: Check = await res.json()
-      setChecks(prev => [check, ...prev.filter(c => c.id !== check.id)])
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.error ?? `Server error ${res.status}`)
+      setChecks(prev => [json as Check, ...prev.filter(c => c.id !== (json as Check).id)])
       setDsState('done')
-    } catch {
-      setDsError('Failed to run DS compliance check.')
+    } catch (err) {
+      setDsError(err instanceof Error ? err.message : 'Failed to run DS compliance check.')
       setDsState('error')
     }
   }
