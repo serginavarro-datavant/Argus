@@ -17,7 +17,7 @@ export default async function ProjectLayout({
   return (
     <div className="min-h-screen flex" style={{ background: '#0b0b13' }}>
       {/* Sidebar */}
-      <nav className="w-52 flex-shrink-0 flex flex-col border-r" style={{ background: '#0e0e18', borderColor: '#1c1c2b' }}>
+      <nav className="w-52 flex-shrink-0 flex flex-col border-r sticky top-0 h-screen" style={{ background: '#0e0e18', borderColor: '#1c1c2b' }}>
         {/* Back + logo */}
         <div className="px-4 py-4 border-b" style={{ borderColor: '#1c1c2b' }}>
           <Link href="/" className="flex items-center gap-2 mb-4 group w-fit">
