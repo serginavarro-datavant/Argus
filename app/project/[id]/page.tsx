@@ -5,41 +5,57 @@ import { formatDate } from '@/lib/utils'
 import ChecksPanel from './ChecksPanel'
 import type { CheckIssue } from '@/lib/types'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Score helpers ────────────────────────────────────────────────────────────
 
 function scoreFromIssues(issues: CheckIssue[]): number {
   return Math.max(0, 100 - issues.reduce((a, i) => a + (i.severity === 'high' ? 10 : i.severity === 'medium' ? 5 : 2), 0))
 }
 
-function scoreColor(s: number) {
-  if (s >= 80) return { text: '#22c55e', bg: 'rgba(34,197,94,0.1)', ring: 'rgba(34,197,94,0.3)' }
-  if (s >= 60) return { text: '#f59e0b', bg: 'rgba(245,158,11,0.1)', ring: 'rgba(245,158,11,0.3)' }
-  return { text: '#ef4444', bg: 'rgba(239,68,68,0.1)', ring: 'rgba(239,68,68,0.3)' }
+function scoreColor(s: number): string {
+  if (s >= 80) return '#22c55e'
+  if (s >= 60) return '#f59e0b'
+  return '#ef4444'
 }
 
 function fmtDuration(ms: number): string {
   const s = Math.round(ms / 1000)
   if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60 > 0 ? `${s % 60}s` : ''}`
+  return `${Math.floor(s / 60)}m ${s % 60 > 0 ? ` ${s % 60}s` : ''}`
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Inline stat chip ─────────────────────────────────────────────────────────
 
-function InsightCard({ label, value, sub, bar, barColor }: {
-  label: string; value: string; sub: string; bar?: number | null; barColor?: string
+function Chip({ value, label, color, href }: {
+  value: string; label: string; color?: string; href?: string
 }) {
+  const inner = (
+    <span
+      className="inline-flex items-baseline gap-1 px-2.5 py-1 rounded-lg text-xs transition-colors hover:bg-white/[0.06]"
+      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #1c1c2b' }}
+    >
+      <span className="font-bold tabular-nums" style={{ color: color ?? 'white' }}>{value}</span>
+      <span style={{ color: '#5c5c78' }}>{label}</span>
+    </span>
+  )
+  return href ? <Link href={href}>{inner}</Link> : <>{inner}</>
+}
+
+// ─── Metric row ───────────────────────────────────────────────────────────────
+
+function MetricRow({ items }: { items: Array<{ label: string; value: string; bar?: number; barColor?: string }> }) {
   return (
-    <div className="rounded-2xl px-4 py-3.5 flex flex-col justify-between" style={{ background: '#0c0c14', border: '1px solid #1c1c2b', minHeight: 90 }}>
-      <div>
-        <div className="text-xs font-medium" style={{ color: '#5c5c78' }}>{label}</div>
-        <div className="text-xl font-bold text-white tabular-nums mt-0.5">{value}</div>
-        <div className="text-xs mt-0.5" style={{ color: '#3a3a52' }}>{sub}</div>
-      </div>
-      {bar != null && (
-        <div className="mt-3 h-1 rounded-full overflow-hidden" style={{ background: '#1c1c2b' }}>
-          <div className="h-full rounded-full" style={{ width: `${Math.min(bar, 100)}%`, background: barColor ?? '#4f46e5' }} />
+    <div className="flex items-stretch gap-px mt-3 rounded-xl overflow-hidden" style={{ border: '1px solid #1c1c2b' }}>
+      {items.map((m, i) => (
+        <div key={i} className="flex-1 px-3.5 py-2.5" style={{ background: '#0c0c14' }}>
+          <div className="text-xs font-medium text-white tabular-nums">{m.value}</div>
+          <div className="text-[10px] mt-0.5" style={{ color: '#3a3a52' }}>{m.label}</div>
+          {m.bar != null && (
+            <div className="mt-1.5 h-0.5 rounded-full overflow-hidden" style={{ background: '#1c1c2b' }}>
+              <div className="h-full rounded-full" style={{ width: `${Math.min(m.bar, 100)}%`, background: m.barColor ?? '#4f46e5' }} />
+            </div>
+          )}
         </div>
-      )}
+      ))}
     </div>
   )
 }
@@ -56,7 +72,7 @@ export default async function ProjectDashboard({ params }: { params: Promise<{ i
   const checks    = prisma.check.findMany({ where: { projectId: id } })
   const comments  = prisma.comment.findMany({ where: { projectId: id } })
 
-  // ── Session metrics ───────────────────────────────────────────────────────
+  // ── Metrics ───────────────────────────────────────────────────────────────
   const completedSessions = sessions.filter(s => s.endedAt)
   const completionRate    = sessions.length > 0
     ? Math.round((completedSessions.length / sessions.length) * 100)
@@ -69,27 +85,23 @@ export default async function ProjectDashboard({ params }: { params: Promise<{ i
     ? durations.reduce((a, b) => a + b, 0) / durations.length
     : null
 
-  const clicksPerSession = sessions.map(s => s.path.filter(e => e.type === 'click').length)
-  const avgClicks = clicksPerSession.length > 0
-    ? Math.round(clicksPerSession.reduce((a, b) => a + b, 0) / clicksPerSession.length)
+  const avgClicks = sessions.length > 0
+    ? Math.round(sessions.map(s => s.path.filter(e => e.type === 'click').length).reduce((a, b) => a + b, 0) / sessions.length)
     : null
 
-  // Most common drop-off screen (last nav URL in non-completed sessions)
-  const dropOffUrls = sessions
-    .filter(s => !s.endedAt)
-    .map(s => {
-      const navs = s.path.filter(e => e.type === 'navigation' && e.url)
-      return navs[navs.length - 1]?.url ?? null
-    })
-    .filter(Boolean) as string[]
+  // Drop-off
+  const dropOffUrls = sessions.filter(s => !s.endedAt).map(s => {
+    const navs = s.path.filter(e => e.type === 'navigation' && e.url)
+    return navs[navs.length - 1]?.url ?? null
+  }).filter(Boolean) as string[]
   const dropOffCounts: Record<string, number> = {}
   dropOffUrls.forEach(u => { dropOffCounts[u] = (dropOffCounts[u] ?? 0) + 1 })
   const topDropOff = Object.entries(dropOffCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null
   const topDropOffLabel = topDropOff
-    ? topDropOff.replace(/^.*?\/(?=[^/]*$)/, '').replace(/\.html?$/, '') || topDropOff
+    ? topDropOff.replace(/^.*\/(?=[^/]*$)/, '').replace(/\.html?$/, '') || topDropOff
     : null
 
-  // ── UX health ─────────────────────────────────────────────────────────────
+  // UX Health
   const latestByType = (['a11y', 'copy', 'ds'] as const).map(t =>
     checks.filter(c => c.type === t).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null
   )
@@ -97,169 +109,89 @@ export default async function ProjectDashboard({ params }: { params: Promise<{ i
   const uxScore = latestScores.length > 0
     ? Math.round(latestScores.reduce((a, b) => a + b, 0) / latestScores.length)
     : null
-  const uxSc = uxScore !== null ? scoreColor(uxScore) : null
-
-  const allIssues = latestByType.filter(Boolean).flatMap(c => c!.results)
-  const highCount = allIssues.filter(i => i.severity === 'high').length
-
-  // Total tasks across all scenarios
-  const totalTasks = scenarios.reduce((n, s) => n + s.tasks.length, 0)
+  const highCount = latestByType.filter(Boolean).flatMap(c => c!.results).filter(i => i.severity === 'high').length
 
   const serveUrl = `/serve/${id}/${project.uploadPath ? project.uploadPath + '/' : ''}${project.entryPath}`
 
-  return (
-    <div className="p-8" style={{ maxWidth: 900 }}>
+  // Metric row items for below the prototype
+  const metricItems = [
+    {
+      label: 'completion',
+      value: completionRate !== null ? `${completionRate}%` : '—',
+      bar: completionRate ?? undefined,
+      barColor: '#22c55e',
+    },
+    {
+      label: 'avg. time',
+      value: avgDuration !== null ? fmtDuration(avgDuration) : '—',
+    },
+    {
+      label: avgClicks !== null ? 'avg. clicks' : 'observations',
+      value: avgClicks !== null ? String(avgClicks) : String(comments.length),
+    },
+    {
+      label: topDropOffLabel ? 'top drop-off' : 'scenarios',
+      value: topDropOffLabel ? topDropOffLabel : String(scenarios.length),
+    },
+  ]
 
-      {/* Header */}
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-white leading-tight">{project.name}</h1>
-          <p className="text-sm mt-1" style={{ color: '#5c5c78' }}>
-            Created {formatDate(project.createdAt)}
-            {project.description ? ` · ${project.description}` : ''}
-          </p>
+  return (
+    <div className="p-6 h-full flex flex-col">
+
+      {/* Compact header */}
+      <div className="flex items-center gap-4 mb-5 flex-shrink-0">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-lg font-bold text-white leading-tight truncate">{project.name}</h1>
+          <p className="text-xs mt-0.5" style={{ color: '#3a3a52' }}>{formatDate(project.createdAt)}</p>
         </div>
+
+        {/* Inline stat chips */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <Chip value={String(sessions.length)} label="sessions" href={`/project/${id}/moderator`} />
+          <Chip value={String(scenarios.length)} label="scenarios" href={`/project/${id}/scenarios`} />
+          <Chip value={String(comments.length)} label="observations" href={`/project/${id}/moderator`} />
+          {uxScore !== null && (
+            <Chip value={String(uxScore)} label="UX health" color={scoreColor(uxScore)} href="#checks" />
+          )}
+        </div>
+
         <a
           href={serveUrl}
           target="_blank"
-          className="flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium text-white hover:opacity-80 transition-opacity"
-          style={{ background: '#2945F0', marginTop: 2 }}
+          className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-80 transition-opacity"
+          style={{ background: '#2945F0' }}
         >
           Open prototype ↗
         </a>
       </div>
 
-      {/* Navigation stat cards */}
-      <div className="grid grid-cols-4 gap-3 mb-3">
+      {/* Two-column layout */}
+      <div className="flex-1 grid gap-5 min-h-0" style={{ gridTemplateColumns: '1fr 420px' }}>
 
-        {/* Sessions */}
-        <Link
-          href={`/project/${id}/moderator`}
-          className="group relative rounded-2xl p-4 overflow-hidden hover:scale-[1.02] transition-transform"
-          style={{ background: '#111119', border: '1px solid #1c1c2b' }}
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className="text-2xl font-bold text-white tabular-nums">{sessions.length}</div>
-            <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: '#4f46e5', marginTop: 4 }}>↗</span>
+        {/* Left: prototype preview + metrics strip */}
+        <div className="flex flex-col min-h-0">
+          <div className="flex-1 rounded-2xl overflow-hidden flex flex-col min-h-0" style={{ background: '#111119', border: '1px solid #1c1c2b' }}>
+            <div className="flex items-center justify-between px-4 py-2.5 flex-shrink-0 border-b" style={{ borderColor: '#1c1c2b' }}>
+              <span className="text-xs font-medium text-white">Prototype</span>
+              <a href={serveUrl} target="_blank" className="text-xs hover:text-white transition-colors" style={{ color: '#5c5c78' }}>
+                Full screen ↗
+              </a>
+            </div>
+            <div className="flex-1 min-h-0" style={{ background: '#0a0a0f' }}>
+              <iframe src={serveUrl} className="w-full h-full border-0" title="Prototype preview" style={{ minHeight: 300 }} />
+            </div>
           </div>
-          <div className="text-xs font-semibold text-white mb-0.5">Sessions</div>
-          <div className="text-xs" style={{ color: '#3a3a52' }}>
-            {completedSessions.length > 0 ? `${completedSessions.length} completed` : 'None recorded yet'}
-          </div>
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: '#4f46e5' }} />
-        </Link>
 
-        {/* Scenarios */}
-        <Link
-          href={`/project/${id}/scenarios`}
-          className="group relative rounded-2xl p-4 overflow-hidden hover:scale-[1.02] transition-transform"
-          style={{ background: '#111119', border: '1px solid #1c1c2b' }}
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className="text-2xl font-bold text-white tabular-nums">{scenarios.length}</div>
-            <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: '#0ea5e9', marginTop: 4 }}>↗</span>
-          </div>
-          <div className="text-xs font-semibold text-white mb-0.5">Scenarios</div>
-          <div className="text-xs" style={{ color: '#3a3a52' }}>
-            {totalTasks > 0 ? `${totalTasks} task${totalTasks !== 1 ? 's' : ''} defined` : 'None defined yet'}
-          </div>
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: '#0ea5e9' }} />
-        </Link>
-
-        {/* Observations */}
-        <Link
-          href={`/project/${id}/moderator`}
-          className="group relative rounded-2xl p-4 overflow-hidden hover:scale-[1.02] transition-transform"
-          style={{ background: '#111119', border: '1px solid #1c1c2b' }}
-        >
-          <div className="flex items-start justify-between mb-3">
-            <div className="text-2xl font-bold text-white tabular-nums">{comments.length}</div>
-            <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: '#a855f7', marginTop: 4 }}>↗</span>
-          </div>
-          <div className="text-xs font-semibold text-white mb-0.5">Observations</div>
-          <div className="text-xs" style={{ color: '#3a3a52' }}>
-            {comments.length > 0
-              ? `${new Set(comments.map(c => c.pageUrl)).size} screen${new Set(comments.map(c => c.pageUrl)).size !== 1 ? 's' : ''} annotated`
-              : 'No annotations yet'}
-          </div>
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: '#a855f7' }} />
-        </Link>
-
-        {/* UX Health */}
-        <a
-          href="#checks"
-          className="group relative rounded-2xl p-4 overflow-hidden hover:scale-[1.02] transition-transform"
-          style={{ background: '#111119', border: '1px solid #1c1c2b' }}
-        >
-          <div className="flex items-start justify-between mb-3">
-            {uxScore !== null ? (
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-bold tabular-nums" style={{ color: uxSc!.text }}>{uxScore}</span>
-                <span className="text-sm" style={{ color: '#3a3a52' }}>/100</span>
-              </div>
-            ) : (
-              <div className="text-2xl font-bold" style={{ color: '#3a3a52' }}>—</div>
-            )}
-            <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity mt-1"
-              style={{ color: uxScore !== null ? uxSc!.text : '#5c5c78' }}>↓</span>
-          </div>
-          <div className="text-xs font-semibold text-white mb-0.5">UX Health</div>
-          <div className="text-xs" style={{ color: '#3a3a52' }}>
-            {uxScore !== null
-              ? highCount > 0 ? `${highCount} high-severity issue${highCount !== 1 ? 's' : ''}` : 'No critical issues'
-              : 'Run checks to score'}
-          </div>
-          {uxScore !== null && (
-            <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: uxSc!.text }} />
-          )}
-        </a>
-      </div>
-
-      {/* Insights strip */}
-      <div className="grid grid-cols-3 gap-3 mb-8">
-        <InsightCard
-          label="Completion rate"
-          value={completionRate !== null ? `${completionRate}%` : '—'}
-          sub={sessions.length > 0
-            ? `${completedSessions.length} of ${sessions.length} session${sessions.length !== 1 ? 's' : ''} finished`
-            : 'No sessions recorded yet'}
-          bar={completionRate}
-          barColor="#22c55e"
-        />
-        <InsightCard
-          label="Avg. session time"
-          value={avgDuration !== null ? fmtDuration(avgDuration) : '—'}
-          sub={avgDuration !== null
-            ? `Over ${durations.length} session${durations.length !== 1 ? 's' : ''}`
-            : 'Complete a session to measure'}
-        />
-        <InsightCard
-          label={topDropOffLabel ? 'Top drop-off screen' : 'Avg. interactions / session'}
-          value={topDropOffLabel ? topDropOffLabel : (avgClicks !== null && avgClicks > 0 ? `${avgClicks}` : '—')}
-          sub={topDropOffLabel
-            ? `${dropOffCounts[topDropOff!]} user${dropOffCounts[topDropOff!] !== 1 ? 's' : ''} left here`
-            : (avgClicks !== null && avgClicks > 0 ? 'clicks per session' : 'No interaction data yet')}
-        />
-      </div>
-
-      {/* Prototype preview */}
-      <div className="rounded-2xl overflow-hidden mb-6" style={{ background: '#111119', border: '1px solid #1c1c2b' }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: '#1c1c2b' }}>
-          <span className="text-sm font-medium text-white">Prototype</span>
-          <a href={serveUrl} target="_blank" className="text-xs hover:text-white transition-colors" style={{ color: '#5c5c78' }}>
-            Full screen ↗
-          </a>
+          {/* Metrics strip below prototype */}
+          <MetricRow items={metricItems} />
         </div>
-        <div style={{ background: '#0a0a0f', height: 400 }}>
-          <iframe src={serveUrl} className="w-full h-full" title="Prototype preview" />
+
+        {/* Right: UX health checks */}
+        <div className="overflow-y-auto" id="checks">
+          <ChecksPanel projectId={id} serveUrl={serveUrl} initialChecks={checks} />
         </div>
-      </div>
 
-      {/* UX health checks */}
-      <div id="checks">
-        <ChecksPanel projectId={id} serveUrl={serveUrl} initialChecks={checks} />
       </div>
-
     </div>
   )
 }
