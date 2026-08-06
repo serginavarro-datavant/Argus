@@ -18,26 +18,41 @@ export default async function ProjectLayout({
     <div className="min-h-screen flex" style={{ background: '#0b0b13' }}>
       {/* Sidebar */}
       <nav className="w-52 flex-shrink-0 flex flex-col border-r sticky top-0 h-screen" style={{ background: '#0e0e18', borderColor: '#1c1c2b' }}>
-        {/* Back + logo */}
-        <div className="px-4 py-4 border-b" style={{ borderColor: '#1c1c2b' }}>
-          <Link href="/" className="flex items-center gap-2 mb-4 group w-fit">
-            <ArgusLogo size={22} />
+        {/* Datavant product header */}
+        <div className="px-4 py-4 flex items-center gap-3 border-b" style={{ borderColor: '#1c1c2b' }}>
+          <ArgusLogo size={36} />
+          <div>
+            <div className="text-white font-semibold text-[15px] leading-tight tracking-tight">Argus</div>
+            <div className="text-[11px] leading-tight font-medium" style={{ color: '#4a4a8a' }}>datavant</div>
+          </div>
+        </div>
+
+        {/* Project context */}
+        <div className="px-4 py-3 border-b" style={{ borderColor: '#1c1c2b' }}>
+          <Link href="/" className="flex items-center gap-1.5 mb-3 group w-fit">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ color: '#3a3a52' }}>
+              <path d="M6 2L3 5L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
             <span className="text-xs transition-colors group-hover:text-white" style={{ color: '#3a3a52' }}>
-              ← All projects
+              All projects
             </span>
           </Link>
-          <div
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold mb-2"
-            style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}
-          >
-            {project.name.charAt(0).toUpperCase()}
+          <div className="flex items-center gap-2">
+            <div
+              className="w-7 h-7 rounded-md flex-shrink-0 flex items-center justify-center text-xs font-bold"
+              style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8' }}
+            >
+              {project.name.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-white font-medium text-sm leading-snug truncate">{project.name}</h1>
+              {project.description && (
+                <p className="text-xs leading-relaxed line-clamp-1 mt-0.5" style={{ color: '#5c5c78' }}>
+                  {project.description}
+                </p>
+              )}
+            </div>
           </div>
-          <h1 className="text-white font-semibold text-sm leading-snug">{project.name}</h1>
-          {project.description && (
-            <p className="text-xs mt-1 leading-relaxed line-clamp-2" style={{ color: '#5c5c78' }}>
-              {project.description}
-            </p>
-          )}
         </div>
 
         <div className="flex-1 p-2.5 space-y-0.5">
