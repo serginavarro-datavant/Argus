@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation'
 import type { PathEvent } from '@/lib/types'
 import InteractionsView from './InteractionsView'
 
+
+
 interface ClickStat {
   key: string
   selector: string
@@ -20,7 +22,6 @@ export default async function InteractionsPage({ params }: { params: Promise<{ i
   if (!project) notFound()
 
   const sessions = prisma.session.findMany({ where: { projectId: id } })
-  const comments = prisma.comment.findMany({ where: { projectId: id } })
   const totalSessions = sessions.length
 
   // Aggregate click events across all sessions
@@ -59,13 +60,14 @@ export default async function InteractionsPage({ params }: { params: Promise<{ i
 
   const totalClickEvents = stats.reduce((a, s) => a + s.totalClicks, 0)
 
+  const serveBaseUrl = `/serve/${id}/${project.uploadPath ? project.uploadPath + '/' : ''}${project.entryPath}`
+
   return (
     <InteractionsView
-      sessions={sessions.map(s => ({ id: s.id, testerName: s.testerName, path: s.path as PathEvent[] }))}
-      comments={comments}
       stats={stats}
       totalSessions={totalSessions}
       totalClickEvents={totalClickEvents}
+      serveBaseUrl={serveBaseUrl}
     />
   )
 }

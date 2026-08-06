@@ -1,15 +1,9 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import type { PathEvent, Comment } from '@/lib/types'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import type { PathEvent } from '@/lib/types'
 
 const S = { bg: '#0b0b13', surface: '#0e0e18', card: '#111119', border: '#1c1c2b', muted: '#5c5c78', dim: '#3a3a52' }
-
-interface Session {
-  id: string
-  testerName: string
-  path: PathEvent[]
-}
 
 interface ClickStat {
   key: string
@@ -22,179 +16,279 @@ interface ClickStat {
   sessionNames: string[]
 }
 
+interface HeatPoint {
+  x: number   // px from left of iframe
+  y: number   // px from top of iframe
+  heat: number // 0–1
+  label: string
+  clicks: number
+}
+
 interface Props {
-  sessions: Session[]
-  comments: Comment[]
   stats: ClickStat[]
   totalSessions: number
   totalClickEvents: number
+  serveBaseUrl: string   // e.g. /serve/fjbpvnumsh77ah1/index.html
 }
 
-// ── Comment Heatmap ───────────────────────────────────────────────────────────
+// ── Click heatmap overlay ─────────────────────────────────────────────────────
 
-const CANVAS_W = 640
-const CANVAS_H = 400
-const BLOB_R = 28
+function ClickHeatmap({ stats, totalSessions, serveBaseUrl }: {
+  stats: ClickStat[]
+  totalSessions: number
+  serveBaseUrl: string
+}) {
+  // All unique page URLs present in click data (path-only)
+  const pageUrls = useMemo(() => {
+    const pages = new Set<string>()
+    stats.forEach(s => { if (s.url) pages.add(s.url) })
+    return [...pages].sort()
+  }, [stats])
 
-function HeatmapCanvas({ points }: { points: { ox: number; oy: number; text: string }[] }) {
-  if (points.length === 0) {
+  // Prefer /serve/ URLs (prototype pages) over bare / fallbacks
+  const [selectedUrl, setSelectedUrl] = useState<string>(
+    () => pageUrls.find(u => u.startsWith('/serve/')) ?? pageUrls[0] ?? ''
+  )
+  const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([])
+  const [iframeLoaded, setIframeLoaded] = useState(false)
+  const [lookupStatus, setLookupStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Stats for the currently selected page
+  const statsForPage = useMemo(() =>
+    stats.filter(s => s.url === selectedUrl),
+    [stats, selectedUrl],
+  )
+
+  const maxSessions = Math.max(...statsForPage.map(s => s.uniqueSessions), 1)
+
+  // Use selectedUrl if it's a prototype path, otherwise fall back to serveBaseUrl
+  const iframeSrc = selectedUrl.startsWith('/serve/') ? selectedUrl : serveBaseUrl
+
+  const computeHeat = useCallback(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+    const doc = iframe.contentDocument
+    if (!doc) return
+
+    setLookupStatus('loading')
+    const points: HeatPoint[] = []
+
+    for (const stat of statsForPage) {
+      if (!stat.selector) continue
+      try {
+        const el = doc.querySelector(stat.selector) as HTMLElement | null
+        if (!el) continue
+        const rect = el.getBoundingClientRect()
+        if (rect.width === 0 && rect.height === 0) continue
+        points.push({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+          heat: stat.uniqueSessions / maxSessions,
+          label: stat.label || stat.selector,
+          clicks: stat.uniqueSessions,
+        })
+      } catch {}
+    }
+
+    setHeatPoints(points)
+    setLookupStatus(points.length > 0 ? 'done' : 'error')
+  }, [statsForPage, maxSessions])
+
+  // Attach load listener; also fire immediately if already loaded (avoids race on hydration)
+  useEffect(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+
+    const run = () => {
+      setIframeLoaded(true)
+      setHeatPoints([])
+      setLookupStatus('idle')
+      setTimeout(computeHeat, 1400)
+    }
+
+    try {
+      if (iframe.contentDocument?.readyState === 'complete') {
+        run()
+        return
+      }
+    } catch {}
+
+    iframe.addEventListener('load', run)
+    return () => iframe.removeEventListener('load', run)
+  }, [computeHeat])
+
+  // Reset when page selection changes
+  useEffect(() => {
+    setIframeLoaded(false)
+    setHeatPoints([])
+    setLookupStatus('idle')
+  }, [selectedUrl])
+
+  if (statsForPage.length === 0) {
     return (
-      <div
-        className="flex items-center justify-center rounded-xl text-sm"
-        style={{
-          width: CANVAS_W,
-          height: CANVAS_H,
-          background: '#0c0c18',
-          border: `1px solid ${S.border}`,
-          color: S.dim,
-          maxWidth: '100%',
-        }}
-      >
-        No comment pins on this page
+      <div className="flex items-center justify-center py-16 text-sm" style={{ color: S.dim }}>
+        No click data for this page
       </div>
     )
   }
 
-  // Density grid for background glow
-  const gridW = 32
-  const gridH = 20
-  const grid = Array.from({ length: gridH }, () => new Array(gridW).fill(0))
-  points.forEach(p => {
-    const gx = Math.min(gridW - 1, Math.floor(p.ox * gridW))
-    const gy = Math.min(gridH - 1, Math.floor(p.oy * gridH))
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = gx + dx; const ny = gy + dy
-        if (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH) {
-          grid[ny][nx] += dy === 0 && dx === 0 ? 1 : 0.3
-        }
-      }
-    }
-  })
-  const maxDensity = Math.max(...grid.flat(), 1)
-
   return (
-    <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-      <svg
-        width={CANVAS_W}
-        height={CANVAS_H}
-        style={{ display: 'block', borderRadius: 12, border: `1px solid ${S.border}`, maxWidth: '100%' }}
-        viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
+    <div className="space-y-3">
+      {/* Page selector */}
+      {pageUrls.length > 1 && (
+        <select
+          value={selectedUrl}
+          onChange={e => setSelectedUrl(e.target.value)}
+          className="text-xs rounded-lg px-3 py-2 outline-none"
+          style={{ background: S.card, border: `1px solid ${S.border}`, color: '#fff' }}
+        >
+          {pageUrls.map(p => (
+            <option key={p} value={p}>{p || '/'}</option>
+          ))}
+        </select>
+      )}
+
+      {/* Iframe + overlay */}
+      <div
+        ref={containerRef}
+        className="relative rounded-xl overflow-hidden"
+        style={{ border: `1px solid ${S.border}`, height: 540 }}
       >
-        <defs>
-          <radialGradient id="blob-grad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#f97316" stopOpacity="0.55" />
-            <stop offset="60%" stopColor="#4f46e5" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#4f46e5" stopOpacity="0" />
-          </radialGradient>
-          <filter id="blur-heat">
-            <feGaussianBlur stdDeviation="12" />
-          </filter>
-        </defs>
+        <iframe
+          ref={iframeRef}
+          src={iframeSrc}
+          className="w-full h-full border-0"
+          title="Prototype heatmap"
+        />
 
-        {/* Background */}
-        <rect width={CANVAS_W} height={CANVAS_H} fill="#0c0c18" />
-
-        {/* Grid density background */}
-        {grid.map((row, gy) =>
-          row.map((val, gx) => {
-            if (val === 0) return null
-            const opacity = (val / maxDensity) * 0.18
-            return (
-              <rect
-                key={`${gx}-${gy}`}
-                x={gx * (CANVAS_W / gridW)}
-                y={gy * (CANVAS_H / gridH)}
-                width={CANVAS_W / gridW + 1}
-                height={CANVAS_H / gridH + 1}
-                fill="#f97316"
-                fillOpacity={opacity}
-              />
-            )
-          })
+        {/* SVG heat overlay */}
+        {heatPoints.length > 0 && (
+          <svg
+            className="absolute inset-0 pointer-events-none"
+            style={{ width: '100%', height: '100%' }}
+          >
+            <defs>
+              <filter id="heat-blur">
+                <feGaussianBlur stdDeviation="18" />
+              </filter>
+            </defs>
+            {/* Blur blobs */}
+            <g filter="url(#heat-blur)">
+              {heatPoints.map((p, i) => (
+                <circle
+                  key={i}
+                  cx={p.x}
+                  cy={p.y}
+                  r={36}
+                  fill={`rgba(239,68,68,${0.25 + p.heat * 0.55})`}
+                />
+              ))}
+            </g>
+            {/* Crisp dots */}
+            {heatPoints.map((p, i) => (
+              <g key={i}>
+                <circle cx={p.x} cy={p.y} r={10} fill={`rgba(239,68,68,${0.35 + p.heat * 0.45})`} />
+                <circle cx={p.x} cy={p.y} r={4} fill="white" fillOpacity={0.9} />
+                {/* click count badge */}
+                <rect
+                  x={p.x + 7} y={p.y - 10}
+                  width={Math.max(20, String(p.clicks).length * 7 + 6)}
+                  height={14}
+                  rx={4}
+                  fill="rgba(0,0,0,0.75)"
+                />
+                <text
+                  x={p.x + 7 + Math.max(20, String(p.clicks).length * 7 + 6) / 2}
+                  y={p.y - 10 + 10}
+                  textAnchor="middle"
+                  fill="white"
+                  fontSize={9}
+                  fontWeight="600"
+                >
+                  {p.clicks}
+                </text>
+              </g>
+            ))}
+          </svg>
         )}
 
-        {/* Heat blobs */}
-        <g filter="url(#blur-heat)">
-          {points.map((p, i) => (
-            <circle
-              key={i}
-              cx={p.ox * CANVAS_W}
-              cy={p.oy * CANVAS_H}
-              r={BLOB_R}
-              fill="url(#blob-grad)"
-            />
-          ))}
-        </g>
+        {/* Loading/status overlay */}
+        {!iframeLoaded && heatPoints.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center text-xs" style={{ background: 'rgba(11,11,19,0.7)', color: S.muted }}>
+            Loading prototype…
+          </div>
+        )}
+        {iframeLoaded && lookupStatus === 'loading' && (
+          <div
+            className="absolute top-3 right-3 text-[10px] px-2 py-1 rounded-md"
+            style={{ background: 'rgba(0,0,0,0.7)', color: S.muted }}
+          >
+            Mapping elements…
+          </div>
+        )}
+        {iframeLoaded && lookupStatus === 'error' && (
+          <div
+            className="absolute top-3 right-3 text-[10px] px-2 py-1 rounded-md"
+            style={{ background: 'rgba(220,38,38,0.1)', color: '#f87171', border: '1px solid rgba(220,38,38,0.2)' }}
+          >
+            Selectors not found — dynamic content may have shifted
+          </div>
+        )}
+        {iframeLoaded && lookupStatus === 'done' && (
+          <button
+            onClick={computeHeat}
+            className="absolute top-3 right-3 text-[10px] px-2 py-1 rounded-md transition-opacity hover:opacity-80"
+            style={{ background: 'rgba(0,0,0,0.6)', color: S.dim }}
+          >
+            ↻ refresh
+          </button>
+        )}
+      </div>
 
-        {/* Pin dots */}
-        {points.map((p, i) => (
-          <g key={i}>
-            <circle
-              cx={p.ox * CANVAS_W}
-              cy={p.oy * CANVAS_H}
-              r={6}
-              fill="#f97316"
-              stroke="#0c0c18"
-              strokeWidth={1.5}
-              opacity={0.9}
-            />
-            <circle
-              cx={p.ox * CANVAS_W}
-              cy={p.oy * CANVAS_H}
-              r={3}
-              fill="white"
-              opacity={0.8}
-            />
-          </g>
-        ))}
-
-        {/* Coordinate guide lines */}
-        <line x1={CANVAS_W / 2} y1={0} x2={CANVAS_W / 2} y2={CANVAS_H} stroke="#ffffff" strokeOpacity={0.03} strokeWidth={1} />
-        <line x1={0} y1={CANVAS_H / 2} x2={CANVAS_W} y2={CANVAS_H / 2} stroke="#ffffff" strokeOpacity={0.03} strokeWidth={1} />
-
-        {/* Legend */}
-        <text x={8} y={CANVAS_H - 8} fill="#3a3a52" fontSize={9} fontFamily="monospace">0,0</text>
-        <text x={CANVAS_W - 28} y={CANVAS_H - 8} fill="#3a3a52" fontSize={9} fontFamily="monospace">1,1</text>
-      </svg>
+      {/* Element list for this page */}
+      <div className="space-y-1">
+        {statsForPage.slice(0, 8).map((stat, i) => {
+          const heatPct = totalSessions > 0 ? Math.round(stat.uniqueSessions / totalSessions * 100) : 0
+          const displayLabel = stat.label || stat.selector || `<${stat.role || 'element'}>`
+          return (
+            <div
+              key={stat.key}
+              className="flex items-center gap-3 rounded-lg px-3 py-2"
+              style={{ background: S.card, border: `1px solid ${S.border}` }}
+            >
+              <span className="text-xs w-4 text-center flex-shrink-0" style={{ color: S.dim }}>{i + 1}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-medium truncate block" style={{ color: '#e0e7ff' }}>{displayLabel}</span>
+                {stat.selector !== displayLabel && (
+                  <span className="text-[10px] font-mono truncate block mt-0.5" style={{ color: S.dim }}>{stat.selector}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: S.border, width: 48 }}>
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${heatPct}%`,
+                      background: heatPct >= 67 ? '#ef4444' : heatPct >= 34 ? '#f97316' : '#4f46e5',
+                    }}
+                  />
+                </div>
+                <span className="text-[10px] tabular-nums" style={{ color: S.muted }}>{stat.uniqueSessions}/{totalSessions}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
 
 // ── Main View ─────────────────────────────────────────────────────────────────
 
-export default function InteractionsView({ sessions, comments, stats, totalSessions, totalClickEvents }: Props) {
-  // All unique pages from comments
-  const commentPages = useMemo(() => {
-    const pages = new Set<string>()
-    comments.forEach(c => {
-      if (c.pageUrl) pages.add(c.pageUrl.replace(/^https?:\/\/[^/]+/, '').replace(/\/$/, '') || '/')
-    })
-    return [...pages].sort()
-  }, [comments])
-
-  const [selectedPage, setSelectedPage] = useState<string>('all')
-
-  const heatmapPoints = useMemo(() => {
-    return comments
-      .filter(c => {
-        if (c.ox == null || c.oy == null) return false
-        if (selectedPage === 'all') return true
-        const cPage = (c.pageUrl ?? '').replace(/^https?:\/\/[^/]+/, '').replace(/\/$/, '') || '/'
-        return cPage === selectedPage
-      })
-      .map(c => ({ ox: c.ox!, oy: c.oy!, text: c.text ?? '' }))
-  }, [comments, selectedPage])
-
-  const commentsForPage = useMemo(() => {
-    return comments.filter(c => {
-      if (selectedPage === 'all') return true
-      const cPage = (c.pageUrl ?? '').replace(/^https?:\/\/[^/]+/, '').replace(/\/$/, '') || '/'
-      return cPage === selectedPage
-    })
-  }, [comments, selectedPage])
-
-  if (stats.length === 0 && comments.length === 0) {
+export default function InteractionsView({ stats, totalSessions, totalClickEvents, serveBaseUrl }: Props) {
+  if (stats.length === 0) {
     return (
       <div className="p-8" style={{ background: S.bg, minHeight: '100vh' }}>
         <div className="mb-6">
@@ -213,7 +307,7 @@ export default function InteractionsView({ sessions, comments, stats, totalSessi
           <div>
             <p className="text-white font-medium">No interaction data yet</p>
             <p className="text-sm mt-1" style={{ color: S.muted }}>
-              Click events and comments will appear here once testers run sessions.
+              Click events will appear here once testers run sessions.
             </p>
           </div>
         </div>
@@ -245,140 +339,87 @@ export default function InteractionsView({ sessions, comments, stats, totalSessi
           ))}
         </div>
 
-        {/* Comment heatmap */}
-        {comments.length > 0 && (
-          <section>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-sm font-semibold text-white">Comment heatmap</h2>
-                <p className="text-xs mt-0.5" style={{ color: S.muted }}>
-                  {comments.filter(c => c.ox != null && c.oy != null).length} pinned comment{comments.filter(c => c.ox != null).length !== 1 ? 's' : ''} — normalized (0,0) top-left → (1,1) bottom-right
-                </p>
-              </div>
-              {commentPages.length > 0 && (
-                <select
-                  value={selectedPage}
-                  onChange={e => setSelectedPage(e.target.value)}
-                  className="text-xs rounded-lg px-3 py-2 outline-none"
-                  style={{ background: S.card, border: `1px solid ${S.border}`, color: '#fff' }}
-                >
-                  <option value="all">All pages ({comments.filter(c => c.ox != null).length})</option>
-                  {commentPages.map(p => (
-                    <option key={p} value={p}>
-                      {p.length > 40 ? p.slice(0, 40) + '…' : p}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div className="flex gap-6 items-start flex-wrap">
-              <HeatmapCanvas points={heatmapPoints} />
-              {/* Comments sidebar */}
-              {commentsForPage.length > 0 && (
-                <div className="flex-1 min-w-0 space-y-2" style={{ maxHeight: CANVAS_H, overflowY: 'auto' }}>
-                  {commentsForPage.map((c, i) => (
-                    <div
-                      key={c.id ?? i}
-                      className="rounded-lg px-3 py-2.5"
-                      style={{ background: S.card, border: `1px solid ${S.border}` }}
-                    >
-                      {c.ox != null && c.oy != null && (
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span
-                            className="w-2 h-2 rounded-full flex-shrink-0"
-                            style={{ background: '#f97316' }}
-                          />
-                          <span className="text-[10px] font-mono" style={{ color: S.dim }}>
-                            ({c.ox.toFixed(2)}, {c.oy.toFixed(2)})
-                          </span>
-                        </div>
-                      )}
-                      <p className="text-xs leading-relaxed" style={{ color: '#e0e7ff' }}>{c.text}</p>
-                      {c.pageUrl && (
-                        <p className="text-[10px] font-mono mt-1 truncate" style={{ color: S.dim }}>
-                          {(c.pageUrl ?? '').replace(/^https?:\/\/[^/]+/, '') || '/'}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        )}
+        {/* Click heatmap */}
+        <section>
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-white">Click heatmap</h2>
+            <p className="text-xs mt-0.5" style={{ color: S.muted }}>
+              Overlay on the live prototype — red = most clicked
+            </p>
+          </div>
+          <ClickHeatmap stats={stats} totalSessions={totalSessions} serveBaseUrl={serveBaseUrl} />
+        </section>
 
-        {/* Click frequency table */}
-        {stats.length > 0 && (
-          <section>
-            <h2 className="text-sm font-semibold text-white mb-3">Click frequency</h2>
-            <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${S.border}` }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: S.card, borderBottom: `1px solid ${S.border}` }}>
-                    <th className="text-left px-4 py-2.5 font-medium w-6" style={{ color: S.muted }}>#</th>
-                    <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Element</th>
-                    <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Page</th>
-                    <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Sessions</th>
-                    <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Total clicks</th>
-                    <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Heat</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.map((stat, i) => {
-                    const heatPct = totalSessions > 0 ? Math.round(stat.uniqueSessions / totalSessions * 100) : 0
-                    const displayLabel = stat.label || stat.selector || `<${stat.role || 'element'}>`
-                    return (
-                      <tr
-                        key={stat.key}
-                        style={{ borderBottom: `1px solid ${S.border}`, background: i % 2 === 0 ? S.surface : 'transparent' }}
-                      >
-                        <td className="px-4 py-3" style={{ color: S.dim }}>{i + 1}</td>
-                        <td className="px-4 py-3 max-w-xs">
-                          <div className="font-medium truncate" style={{ color: '#e0e7ff' }}>{displayLabel}</div>
-                          {stat.selector && stat.selector !== displayLabel && (
-                            <div className="text-[10px] font-mono truncate mt-0.5" style={{ color: S.dim }}>{stat.selector}</div>
-                          )}
-                          {stat.role && (
-                            <div className="inline-block text-[9px] px-1.5 py-0.5 rounded mt-0.5" style={{ background: 'rgba(99,102,241,0.1)', color: '#818cf8' }}>
-                              {stat.role}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 font-mono" style={{ color: '#6b7280' }}>{stat.url}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <span style={{ color: '#a5b4fc' }}>{stat.uniqueSessions}</span>
-                            <span style={{ color: S.dim }}>/ {totalSessions}</span>
+        {/* Full click frequency table */}
+        <section>
+          <h2 className="text-sm font-semibold text-white mb-3">Click frequency — all pages</h2>
+          <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${S.border}` }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ background: S.card, borderBottom: `1px solid ${S.border}` }}>
+                  <th className="text-left px-4 py-2.5 font-medium w-6" style={{ color: S.muted }}>#</th>
+                  <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Element</th>
+                  <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Page</th>
+                  <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Sessions</th>
+                  <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Total clicks</th>
+                  <th className="text-left px-4 py-2.5 font-medium" style={{ color: S.muted }}>Heat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.map((stat, i) => {
+                  const heatPct = totalSessions > 0 ? Math.round(stat.uniqueSessions / totalSessions * 100) : 0
+                  const displayLabel = stat.label || stat.selector || `<${stat.role || 'element'}>`
+                  return (
+                    <tr
+                      key={stat.key}
+                      style={{ borderBottom: `1px solid ${S.border}`, background: i % 2 === 0 ? S.surface : 'transparent' }}
+                    >
+                      <td className="px-4 py-3" style={{ color: S.dim }}>{i + 1}</td>
+                      <td className="px-4 py-3 max-w-xs">
+                        <div className="font-medium truncate" style={{ color: '#e0e7ff' }}>{displayLabel}</div>
+                        {stat.selector && stat.selector !== displayLabel && (
+                          <div className="text-[10px] font-mono truncate mt-0.5" style={{ color: S.dim }}>{stat.selector}</div>
+                        )}
+                        {stat.role && (
+                          <div className="inline-block text-[9px] px-1.5 py-0.5 rounded mt-0.5" style={{ background: 'rgba(99,102,241,0.1)', color: '#818cf8' }}>
+                            {stat.role}
                           </div>
-                          {stat.sessionNames.length > 0 && (
-                            <div className="text-[10px] mt-0.5 truncate" style={{ color: S.dim }}>
-                              {stat.sessionNames.slice(0, 3).join(', ')}{stat.sessionNames.length > 3 ? ' +more' : ''}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 font-semibold" style={{ color: '#e0e7ff' }}>{stat.totalClicks}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: S.border, width: 64 }}>
-                              <div
-                                className="h-full rounded-full"
-                                style={{
-                                  width: `${heatPct}%`,
-                                  background: heatPct >= 67 ? '#f97316' : heatPct >= 34 ? '#4f46e5' : '#4a4a6a',
-                                }}
-                              />
-                            </div>
-                            <span className="text-[10px]" style={{ color: heatPct >= 67 ? '#f97316' : S.dim }}>{heatPct}%</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-mono" style={{ color: '#6b7280' }}>{stat.url}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <span style={{ color: '#a5b4fc' }}>{stat.uniqueSessions}</span>
+                          <span style={{ color: S.dim }}>/ {totalSessions}</span>
+                        </div>
+                        {stat.sessionNames.length > 0 && (
+                          <div className="text-[10px] mt-0.5 truncate" style={{ color: S.dim }}>
+                            {stat.sessionNames.slice(0, 3).join(', ')}{stat.sessionNames.length > 3 ? ' +more' : ''}
                           </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-semibold" style={{ color: '#e0e7ff' }}>{stat.totalClicks}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: S.border, width: 64 }}>
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${heatPct}%`,
+                                background: heatPct >= 67 ? '#ef4444' : heatPct >= 34 ? '#f97316' : '#4a4a6a',
+                              }}
+                            />
+                          </div>
+                          <span className="text-[10px]" style={{ color: heatPct >= 67 ? '#ef4444' : S.dim }}>{heatPct}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </div>
   )

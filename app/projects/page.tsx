@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { formatDate } from '@/lib/utils'
 import Link from 'next/link'
 import { ArgusLogo } from '@/components/ArgusLogo'
+import NewProjectModal from './NewProjectModal'
 
 const S = { bg: '#0b0b13', surface: '#0e0e18', card: '#111119', border: '#1c1c2b', muted: '#5c5c78', dim: '#3a3a52' }
 
@@ -33,13 +34,7 @@ export default async function ProjectsPage() {
               {projects.length} project{projects.length !== 1 ? 's' : ''}
             </p>
           </div>
-          <Link
-            href="/project/fjbpvnumsh77ah1"
-            className="text-sm font-medium text-white px-4 py-2 rounded-lg transition-opacity hover:opacity-80"
-            style={{ background: '#5046e5' }}
-          >
-            + New project
-          </Link>
+          <NewProjectModal />
         </div>
 
         {projects.length === 0 ? (
