@@ -85,7 +85,7 @@ export default async function ProjectDashboard({ params }: { params: Promise<{ i
         </div>
       )}
 
-      {/* A11y checks */}
+      {/* UX health checks */}
       <ChecksPanel
         projectId={id}
         serveUrl={`/serve/${id}/${project.uploadPath ? project.uploadPath + '/' : ''}${project.entryPath}`}
