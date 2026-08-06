@@ -56,6 +56,8 @@ export interface PathEvent {
   type: 'navigation' | 'click' | 'task_start' | 'task_complete'
   url?: string
   selector?: string
+  role?: string
+  label?: string
   taskIndex?: number
   timestamp: string
 }
