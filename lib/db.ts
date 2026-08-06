@@ -33,15 +33,19 @@ export interface Scenario {
   id: string
   projectId: string
   title: string
-  description: string
+  description: string       // overall goal / instructions
+  startScreen: string       // URL path or hash where the test begins
+  successCriteria: string   // what "done" looks like
   tasks: Task[]
+  order: number
   createdAt: string
 }
 
 export interface Task {
   id: string
   title: string
-  description: string
+  description: string   // phrased as a goal (WHAT, not HOW)
+  hint?: string         // optional on-screen aid shown to testers
 }
 
 export interface Persona {
@@ -132,6 +136,9 @@ function openDB(): DatabaseSync {
     `ALTER TABLE "Comment" ADD COLUMN "screen" TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE "Comment" ADD COLUMN "scenarioId" TEXT`,
     `ALTER TABLE "Project" ADD COLUMN "remoteBaseUrl" TEXT`,
+    `ALTER TABLE "Scenario" ADD COLUMN "startScreen" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "Scenario" ADD COLUMN "successCriteria" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "Scenario" ADD COLUMN "order" INTEGER NOT NULL DEFAULT 0`,
   ]) {
     try { db.exec(stmt) } catch { /* column already exists */ }
   }
@@ -181,10 +188,12 @@ const projectStmts = {
 // ─── Scenario ─────────────────────────────────────────────────────────────────
 
 const scenarioStmts = {
-  findByProject: db.prepare(`SELECT * FROM "Scenario" WHERE "projectId"=? ORDER BY "createdAt" DESC`),
+  findByProject: db.prepare(`SELECT * FROM "Scenario" WHERE "projectId"=? ORDER BY "order" ASC, "createdAt" ASC`),
   findById:      db.prepare(`SELECT * FROM "Scenario" WHERE "id"=?`),
-  insert:        db.prepare(`INSERT INTO "Scenario"("id","projectId","title","description","tasks","createdAt") VALUES (?,?,?,?,?,?)`),
+  insert:        db.prepare(`INSERT INTO "Scenario"("id","projectId","title","description","startScreen","successCriteria","tasks","order","createdAt") VALUES (?,?,?,?,?,?,?,?,?)`),
+  update:        db.prepare(`UPDATE "Scenario" SET "title"=?,"description"=?,"startScreen"=?,"successCriteria"=?,"tasks"=?,"order"=? WHERE "id"=?`),
   delete:        db.prepare(`DELETE FROM "Scenario" WHERE "id"=?`),
+  maxOrder:      db.prepare(`SELECT COALESCE(MAX("order"),0) as m FROM "Scenario" WHERE "projectId"=?`),
 }
 
 // ─── Persona ─────────────────────────────────────────────────────────────────
@@ -237,7 +246,13 @@ function mapProject(r: Record<string, unknown>): Project {
 }
 
 function mapScenario(r: Record<string, unknown>): Scenario {
-  return { ...r, tasks: j<Task[]>(r.tasks) } as unknown as Scenario
+  return {
+    ...r,
+    tasks: j<Task[]>(r.tasks),
+    startScreen: r.startScreen ?? '',
+    successCriteria: r.successCriteria ?? '',
+    order: Number(r.order ?? 0),
+  } as unknown as Scenario
 }
 
 function mapPersona(r: Record<string, unknown>): Persona {
@@ -301,8 +316,16 @@ export const prisma = {
     },
     create({ data }: { data: Omit<Scenario, 'id' | 'createdAt'> }): Scenario {
       const id = createId(); const ts = now()
-      scenarioStmts.insert.run(id, data.projectId, data.title, data.description ?? '', js(data.tasks ?? []), ts)
-      return { ...data, id, tasks: data.tasks ?? [], createdAt: ts }
+      const maxRow = scenarioStmts.maxOrder.get(data.projectId) as { m: number }
+      const ord = data.order ?? (maxRow.m + 1)
+      scenarioStmts.insert.run(id, data.projectId, data.title, data.description ?? '', data.startScreen ?? '', data.successCriteria ?? '', js(data.tasks ?? []), ord, ts)
+      return { ...data, id, tasks: data.tasks ?? [], startScreen: data.startScreen ?? '', successCriteria: data.successCriteria ?? '', order: ord, createdAt: ts }
+    },
+    update({ where, data }: { where: { id: string }; data: Partial<Omit<Scenario, 'id' | 'projectId' | 'createdAt'>> }): Scenario {
+      const existing = prisma.scenario.findUnique({ where })!
+      const merged = { ...existing, ...data }
+      scenarioStmts.update.run(merged.title, merged.description ?? '', merged.startScreen ?? '', merged.successCriteria ?? '', js(merged.tasks ?? []), merged.order ?? 0, where.id)
+      return merged
     },
     delete({ where }: { where: { id: string } }) {
       scenarioStmts.delete.run(where.id)
