@@ -33,11 +33,16 @@ export interface Scenario {
   id: string
   projectId: string
   title: string
-  description: string       // overall goal / instructions
+  description: string       // one-line goal shown in task bar (the WHAT)
+  brief: string             // pre-task briefing: context + what "done" looks like
   startScreen: string       // URL path or hash where the test begins
-  successCriteria: string   // what "done" looks like
+  successCriteria: string   // what "done" looks like (internal/moderator)
   tasks: Task[]
   order: number
+  role: string              // tester role, e.g. "Customer"
+  persona: string           // persona slug, e.g. "customer"
+  optional: boolean         // if true, doesn't count toward task total
+  freeform: boolean         // if true: no timer, no rating, just a finish button
   createdAt: string
 }
 
@@ -141,18 +146,65 @@ function openDB(): DatabaseSync {
     `ALTER TABLE "Scenario" ADD COLUMN "startScreen" TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE "Scenario" ADD COLUMN "successCriteria" TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE "Scenario" ADD COLUMN "order" INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE "Scenario" ADD COLUMN "brief" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "Scenario" ADD COLUMN "role" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "Scenario" ADD COLUMN "persona" TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE "Scenario" ADD COLUMN "optional" INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE "Scenario" ADD COLUMN "freeform" INTEGER NOT NULL DEFAULT 0`,
   ]) {
     try { db.exec(stmt) } catch { /* column already exists */ }
   }
   return db
 }
 
-const DEFAULT_PROJECTS: Array<{ id: string; name: string; description: string; remoteBaseUrl: string }> = [
+// The canonical demo project — Config Builder (already uploaded at this ID)
+const CB_PROJECT_ID = 'fjbpvnumsh77ah1'
+
+// Config Builder usability-test scenarios (seeded idempotently on startup)
+const CB_SCENARIOS: Array<{
+  order: number; title: string; description: string; brief: string
+  successCriteria: string; role: string; persona: string
+  optional: boolean; freeform: boolean
+}> = [
   {
-    id: 'databricks-app-default',
-    name: 'Databricks App',
-    description: 'Datavant Tokenization — Databricks integration prototype',
-    remoteBaseUrl: 'https://serginavarro-datavant.github.io/Datavant-Tokenization/Prototypes/DataBricks%20App',
+    order: 1,
+    title: 'Onboard a new patient file, and give a partner access',
+    description: 'Set up a configuration for a new patient file so it\'s tokenized and onboarded, then give BluePeak Payer access.',
+    brief: 'Your team just got a new weekly patient file, with a data sample to work from. Create one configuration that both tokenizes and onboards it, then give BluePeak Payer access. You\'re done once it exists and BluePeak can use it.',
+    successCriteria: 'A new configuration exists set to BOTH tokenize and onboard, and BluePeak Payer has been granted access to it.',
+    role: 'Customer', persona: 'customer', optional: false, freeform: false,
+  },
+  {
+    order: 2,
+    title: 'Extend a tokenize-only config to also onboard',
+    description: 'Update "Rx Claims Dedup" so its data is also onboarded to the portal, not just tokenized, then save.',
+    brief: '"Rx Claims Dedup" only de-identifies data today. The team now needs it onboarded to the Datavant portal too. Update the existing config to do both, and save.',
+    successCriteria: '"Rx Claims Dedup" is changed to also onboard (mode includes onboarding) and saved, creating a new version.',
+    role: 'Customer', persona: 'customer', optional: false, freeform: false,
+  },
+  {
+    order: 3,
+    title: 'Spin up a variant from an earlier version',
+    description: 'Make your own copy of "Provider Directory Sync" based on an earlier version (version 1), not the current one.',
+    brief: 'You want to experiment with an earlier setup of "Provider Directory Sync" (version 1), without touching the current one. Expand its previous versions and make your own copy from version 1. You\'re done once your copy exists.',
+    successCriteria: 'A new configuration (the participant\'s own copy) exists, cloned from version 1 of "Provider Directory Sync" (not the current version); the original is untouched.',
+    role: 'Customer', persona: 'customer', optional: false, freeform: false,
+  },
+  {
+    order: 4,
+    title: 'Fix onboarding mapping problems',
+    description: 'Fix the onboarding setup in "Oncology Registry Onboarding" so no columns get dropped, then save.',
+    brief: 'In "Oncology Registry Onboarding", some columns aren\'t set up right for onboarding, so they\'d be silently dropped and unusable in Match & Assess. Review the onboarding setup, fix the problems, and save.',
+    successCriteria: 'The unmapped/misconfigured onboarding columns are corrected so none are dropped, and the config is saved.',
+    role: 'Customer', persona: 'customer', optional: false, freeform: false,
+  },
+  {
+    order: 5,
+    title: 'Poke around',
+    description: 'Explore anything you like and leave comments as you go. No task, no timer.',
+    brief: 'No task this time. Wander through the Configuration Builder however you like and drop comments on anything that stands out, good or bad. When you\'re done, click Done exploring.',
+    successCriteria: 'n/a — ends when the participant clicks Done exploring.',
+    role: 'Customer', persona: 'customer', optional: true, freeform: true,
   },
 ]
 
@@ -160,13 +212,14 @@ const g = globalThis as unknown as { __argusDb?: DatabaseSync }
 if (!g.__argusDb) g.__argusDb = openDB()
 const db = g.__argusDb
 
-// Seed default projects once (idempotent — skips if id already exists)
-for (const def of DEFAULT_PROJECTS) {
-  const exists = db.prepare(`SELECT id FROM "Project" WHERE id = ?`).get(def.id)
+// Seed CB scenarios idempotently (insert only if title not already present for this project)
+for (const s of CB_SCENARIOS) {
+  const exists = db.prepare(`SELECT id FROM "Scenario" WHERE "projectId"=? AND "title"=?`).get(CB_PROJECT_ID, s.title)
   if (!exists) {
+    const id = Math.random().toString(36).slice(2, 9) + Date.now().toString(36)
     const ts = new Date().toISOString()
-    db.prepare(`INSERT INTO "Project"(id,name,description,uploadPath,entryPath,remoteBaseUrl,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?,?)`)
-      .run(def.id, def.name, def.description, '', 'index.html', def.remoteBaseUrl, ts, ts)
+    db.prepare(`INSERT INTO "Scenario"("id","projectId","title","description","brief","startScreen","successCriteria","tasks","order","role","persona","optional","freeform","createdAt") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, CB_PROJECT_ID, s.title, s.description, s.brief, 'Configurations list (landing)', s.successCriteria, '[]', s.order, s.role, s.persona, s.optional ? 1 : 0, s.freeform ? 1 : 0, ts)
   }
 }
 
@@ -192,8 +245,8 @@ const projectStmts = {
 const scenarioStmts = {
   findByProject: db.prepare(`SELECT * FROM "Scenario" WHERE "projectId"=? ORDER BY "order" ASC, "createdAt" ASC`),
   findById:      db.prepare(`SELECT * FROM "Scenario" WHERE "id"=?`),
-  insert:        db.prepare(`INSERT INTO "Scenario"("id","projectId","title","description","startScreen","successCriteria","tasks","order","createdAt") VALUES (?,?,?,?,?,?,?,?,?)`),
-  update:        db.prepare(`UPDATE "Scenario" SET "title"=?,"description"=?,"startScreen"=?,"successCriteria"=?,"tasks"=?,"order"=? WHERE "id"=?`),
+  insert:        db.prepare(`INSERT INTO "Scenario"("id","projectId","title","description","brief","startScreen","successCriteria","tasks","order","role","persona","optional","freeform","createdAt") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+  update:        db.prepare(`UPDATE "Scenario" SET "title"=?,"description"=?,"brief"=?,"startScreen"=?,"successCriteria"=?,"tasks"=?,"order"=?,"role"=?,"persona"=?,"optional"=?,"freeform"=? WHERE "id"=?`),
   delete:        db.prepare(`DELETE FROM "Scenario" WHERE "id"=?`),
   maxOrder:      db.prepare(`SELECT COALESCE(MAX("order"),0) as m FROM "Scenario" WHERE "projectId"=?`),
 }
@@ -253,6 +306,11 @@ function mapScenario(r: Record<string, unknown>): Scenario {
     tasks: j<Task[]>(r.tasks),
     startScreen: r.startScreen ?? '',
     successCriteria: r.successCriteria ?? '',
+    brief: r.brief ?? '',
+    role: r.role ?? '',
+    persona: r.persona ?? '',
+    optional: Boolean(r.optional),
+    freeform: Boolean(r.freeform),
     order: Number(r.order ?? 0),
   } as unknown as Scenario
 }
@@ -320,13 +378,22 @@ export const prisma = {
       const id = createId(); const ts = now()
       const maxRow = scenarioStmts.maxOrder.get(data.projectId) as { m: number }
       const ord = data.order ?? (maxRow.m + 1)
-      scenarioStmts.insert.run(id, data.projectId, data.title, data.description ?? '', data.startScreen ?? '', data.successCriteria ?? '', js(data.tasks ?? []), ord, ts)
-      return { ...data, id, tasks: data.tasks ?? [], startScreen: data.startScreen ?? '', successCriteria: data.successCriteria ?? '', order: ord, createdAt: ts }
+      scenarioStmts.insert.run(
+        id, data.projectId, data.title, data.description ?? '', data.brief ?? '',
+        data.startScreen ?? '', data.successCriteria ?? '', js(data.tasks ?? []), ord,
+        data.role ?? '', data.persona ?? '', data.optional ? 1 : 0, data.freeform ? 1 : 0, ts,
+      )
+      return { ...data, id, tasks: data.tasks ?? [], brief: data.brief ?? '', startScreen: data.startScreen ?? '', successCriteria: data.successCriteria ?? '', role: data.role ?? '', persona: data.persona ?? '', optional: Boolean(data.optional), freeform: Boolean(data.freeform), order: ord, createdAt: ts }
     },
     update({ where, data }: { where: { id: string }; data: Partial<Omit<Scenario, 'id' | 'projectId' | 'createdAt'>> }): Scenario {
       const existing = prisma.scenario.findUnique({ where })!
       const merged = { ...existing, ...data }
-      scenarioStmts.update.run(merged.title, merged.description ?? '', merged.startScreen ?? '', merged.successCriteria ?? '', js(merged.tasks ?? []), merged.order ?? 0, where.id)
+      scenarioStmts.update.run(
+        merged.title, merged.description ?? '', merged.brief ?? '',
+        merged.startScreen ?? '', merged.successCriteria ?? '', js(merged.tasks ?? []), merged.order ?? 0,
+        merged.role ?? '', merged.persona ?? '', merged.optional ? 1 : 0, merged.freeform ? 1 : 0,
+        where.id,
+      )
       return merged
     },
     delete({ where }: { where: { id: string } }) {

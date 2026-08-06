@@ -17,10 +17,15 @@ export async function POST(request: Request) {
       projectId,
       title: body.title ?? 'Untitled scenario',
       description: body.description ?? '',
+      brief: body.brief ?? '',
       startScreen: body.startScreen ?? '',
       successCriteria: body.successCriteria ?? '',
       tasks: body.tasks ?? [],
       order: body.order,
+      role: body.role ?? '',
+      persona: body.persona ?? '',
+      optional: body.optional ?? false,
+      freeform: body.freeform ?? false,
     },
   })
   return NextResponse.json(scenario)

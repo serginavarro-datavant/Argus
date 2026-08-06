@@ -122,7 +122,7 @@ function ScenarioEditor({ scenario, projectId, onSaved, onDelete, onClose }: {
   async function save() {
     if (!title.trim()) return
     setSaving(true)
-    const data = { projectId, title, description, startScreen, successCriteria, tasks, order: scenario.order }
+    const data = { projectId, title, description, brief: scenario.brief ?? '', startScreen, successCriteria, tasks, order: scenario.order, role: scenario.role ?? '', persona: scenario.persona ?? '', optional: scenario.optional ?? false, freeform: scenario.freeform ?? false }
     const saved = isDraft(scenario.id)
       ? await apiCreate(data)
       : await apiUpdate(scenario.id, data)
@@ -244,10 +244,15 @@ function ProposeModal({ projectId, onProposed, onClose }: {
       projectId: s.projectId,
       title: s.title,
       description: s.description,
+      brief: s.brief ?? '',
       startScreen: s.startScreen,
       successCriteria: s.successCriteria,
       tasks: s.tasks,
       order: s.order,
+      role: s.role ?? '',
+      persona: s.persona ?? '',
+      optional: s.optional ?? false,
+      freeform: s.freeform ?? false,
     })))
     onProposed(saved)
   }
@@ -450,10 +455,15 @@ export default function ScenariosPage() {
       projectId,
       title: '',
       description: '',
+      brief: '',
       startScreen: '/',
       successCriteria: '',
       tasks: [],
       order: scenarios.length,
+      role: '',
+      persona: '',
+      optional: false,
+      freeform: false,
       createdAt: new Date().toISOString(),
     }
     setScenarios(prev => [...prev, draft])
