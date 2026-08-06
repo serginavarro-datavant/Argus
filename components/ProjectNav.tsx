@@ -131,7 +131,7 @@ export function ProjectNav({ project }: { project: Project }) {
 
       {/* Project context */}
       <div className="px-4 py-3 border-b" style={{ borderColor: '#1c1c2b' }}>
-        <Link href="/" className="flex items-center gap-1.5 mb-3 group w-fit">
+        <Link href="/projects" className="flex items-center gap-1.5 mb-3 group w-fit">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ color: '#3a3a52' }}>
             <path d="M6 2L3 5L6 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
