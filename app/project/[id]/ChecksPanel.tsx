@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { Check, CheckIssue } from '@/lib/types'
 import { formatDate } from '@/lib/utils'
 
@@ -132,11 +133,15 @@ export default function ChecksPanel({
   }
 
   function runCheck() {
-    setRunState('loading')
-    setRunError('')
-    setPassCount(null)
+    // flushSync forces the loading state to paint before the iframe is created.
+    // Without this, a cached prototype can post its axe results in < 100ms —
+    // faster than React's normal batched render cycle — so the spinner never appears.
+    flushSync(() => {
+      setRunState('loading')
+      setRunError('')
+      setPassCount(null)
+    })
 
-    // Create hidden iframe that injects axe-core
     const iframe = document.createElement('iframe')
     iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:800px;opacity:0;pointer-events:none;'
     iframe.src = serveUrl + (serveUrl.includes('?') ? '&' : '?') + '_argusAxe=1'
