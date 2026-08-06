@@ -81,6 +81,8 @@ export interface ReadOnlyPin {
 export interface ReadOnlyLayerHandle {
   setPins(pins: ReadOnlyPin[]): void
   reposition(): void
+  highlightPin(id: string): void
+  setVisible(visible: boolean): void
   destroy(): void
 }
 
@@ -93,6 +95,7 @@ export function mountReadOnlyLayer(
   opts: { onPinClick?: (id: string) => void } = {},
 ): ReadOnlyLayerHandle {
   let pins: ReadOnlyPin[] = []
+  let pinsVisible = true
   const dots = new Map<string, HTMLDivElement>()
 
   const layer = document.createElement('div')
@@ -122,6 +125,7 @@ export function mountReadOnlyLayer(
   }
 
   function positionDot(dot: HTMLDivElement, pin: ReadOnlyPin) {
+    if (!pinsVisible) { dot.style.display = 'none'; return }
     const cur = normUrl(currentUrl())
     const pinUrl = normUrl(pin.pageUrl)
     if (cur && pinUrl && cur !== pinUrl) { dot.style.display = 'none'; return }
@@ -161,6 +165,27 @@ export function mountReadOnlyLayer(
       for (const pin of pins) renderDot(pin)
     },
     reposition,
+    highlightPin(id: string) {
+      const dot = dots.get(id)
+      if (!dot) return
+      dot.style.transition = 'transform 0.2s ease, box-shadow 0.2s ease'
+      dot.style.transform = 'translate(-50%,-50%) scale(2.4)'
+      dot.style.boxShadow = '0 0 0 6px rgba(255,255,255,0.25), 0 4px 14px rgba(0,0,0,.9)'
+      dot.style.zIndex = '999995'
+      setTimeout(() => {
+        dot.style.transform = 'translate(-50%,-50%) scale(1.5)'
+        setTimeout(() => {
+          dot.style.transform = 'translate(-50%,-50%) scale(1)'
+          dot.style.boxShadow = '0 2px 8px rgba(0,0,0,.6)'
+          dot.style.zIndex = '999991'
+          setTimeout(() => { dot.style.transition = '' }, 200)
+        }, 250)
+      }, 300)
+    },
+    setVisible(v: boolean) {
+      pinsVisible = v
+      reposition()
+    },
     destroy() {
       ro.disconnect()
       window.removeEventListener('scroll', reposition)

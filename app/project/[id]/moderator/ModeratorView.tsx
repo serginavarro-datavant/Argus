@@ -61,8 +61,18 @@ export default function ModeratorView({ project, initialSessions, initialScenari
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: S.bg }}>
-      {/* ── Left sidebar ────────────────────────────────────────────────────── */}
-      <aside className="w-64 flex-shrink-0 flex flex-col border-r overflow-hidden" style={{ background: S.surface, borderColor: S.border }}>
+      {/* ── Left sidebar — hidden in Comments tab so iframe gets full width ── */}
+      <aside
+        className="flex-shrink-0 flex flex-col border-r overflow-hidden transition-all"
+        style={{
+          background: S.surface, borderColor: S.border,
+          width: tab === 'comments' ? 0 : 256,
+          minWidth: 0,
+          opacity: tab === 'comments' ? 0 : 1,
+          pointerEvents: tab === 'comments' ? 'none' : 'auto',
+          overflow: 'hidden',
+        }}
+      >
         {/* Scenario picker */}
         <div className="px-4 py-3 border-b" style={{ borderColor: S.border }}>
           <label className="block text-xs mb-1.5" style={{ color: S.muted }}>Scenario</label>
@@ -372,7 +382,9 @@ function CommentsTab({ project, comments, sessions, colorFor }: {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const layerRef = useRef<ReadOnlyLayerHandle | null>(null)
   const pinsRef = useRef<ReadOnlyPin[]>([])
+  const pendingHighlightRef = useRef<string | null>(null)
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [pinsVisible, setPinsVisible] = useState(true)
 
   const protoSrc = `/serve/${project.id}/${[project.uploadPath, project.entryPath].filter(Boolean).join('/')}`
 
@@ -394,15 +406,54 @@ function CommentsTab({ project, comments, sessions, colorFor }: {
     const iframe = iframeRef.current
     if (!iframe) return
     layerRef.current?.destroy()
-    layerRef.current = mountReadOnlyLayer(iframe, { onPinClick: setActiveId })
+    layerRef.current = mountReadOnlyLayer(iframe, { onPinClick: handlePinClick })
     layerRef.current.setPins(pinsRef.current)
+    layerRef.current.setVisible(pinsRef.current.length > 0)
+    // Fire any pending highlight after the new page renders
+    if (pendingHighlightRef.current) {
+      const id = pendingHighlightRef.current
+      pendingHighlightRef.current = null
+      setTimeout(() => layerRef.current?.highlightPin(id), 150)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  function handlePinClick(id: string) {
+    setActiveId(id)
+    layerRef.current?.highlightPin(id)
+  }
+
+  function handleCommentClick(comment: Comment) {
+    const url = comment.screen || comment.pageUrl
+    setActiveId(comment.id)
+
+    // Strip host so navigation works regardless of env (localhost vs deployed)
+    const path = url ? url.replace(/^https?:\/\/[^/]+/, '') || '/' : null
+
+    const curPath = (() => {
+      try { return iframeRef.current?.contentWindow?.location?.pathname ?? '' } catch { return '' }
+    })()
+    const targetPath = path ? path.split('?')[0].replace(/\/+$/, '') || '/' : ''
+    const alreadyThere = curPath.replace(/\/+$/, '') === targetPath
+
+    if (alreadyThere || !path) {
+      layerRef.current?.highlightPin(comment.id)
+    } else {
+      pendingHighlightRef.current = comment.id
+      iframeRef.current?.contentWindow?.location.assign(path)
+    }
+  }
 
   // Sync pins into layer whenever they change
   useEffect(() => {
     pinsRef.current = pins
     layerRef.current?.setPins(pins)
   }, [pins])
+
+  // Sync pin visibility
+  useEffect(() => {
+    layerRef.current?.setVisible(pinsVisible)
+  }, [pinsVisible])
 
   // Poll iframe URL → reposition so dots show/hide as user navigates
   useEffect(() => {
@@ -413,15 +464,11 @@ function CommentsTab({ project, comments, sessions, colorFor }: {
   // Cleanup on unmount
   useEffect(() => () => { layerRef.current?.destroy() }, [])
 
-  const activeComment = activeId ? comments.find(c => c.id === activeId) : null
-  const activeSession = activeComment ? sessions.find(s => s.id === activeComment.sessionId) : null
-
   if (comments.length === 0) {
     return <Empty label="No comments pinned in this view." />
   }
 
   return (
-    // Iframe fills all available space; comment panel floats over the right edge
     <div className="relative h-full overflow-hidden" style={{ background: '#000' }}>
       <iframe
         ref={iframeRef}
@@ -436,11 +483,23 @@ function CommentsTab({ project, comments, sessions, colorFor }: {
         className="absolute top-0 right-0 bottom-0 w-64 flex flex-col overflow-hidden"
         style={{ background: 'rgba(14,14,24,0.96)', borderLeft: `1px solid ${S.border}` }}
       >
-        <div className="px-4 py-3 border-b flex-shrink-0" style={{ borderColor: S.border }}>
-          <h3 className="text-sm font-medium text-white">Comments</h3>
-          <p className="text-xs mt-0.5" style={{ color: S.muted }}>
-            {comments.length} pinned · navigate to filter by screen
-          </p>
+        <div className="px-4 py-3 border-b flex-shrink-0 flex items-center gap-2" style={{ borderColor: S.border }}>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-medium text-white">Comments</h3>
+            <p className="text-xs mt-0.5" style={{ color: S.muted }}>{comments.length} pinned</p>
+          </div>
+          <button
+            onClick={() => setPinsVisible(v => !v)}
+            title={pinsVisible ? 'Hide pins' : 'Show pins'}
+            className="flex-shrink-0 px-2 py-1 rounded-md text-xs transition-colors"
+            style={{
+              background: pinsVisible ? 'rgba(80,70,229,0.2)' : 'rgba(255,255,255,0.05)',
+              color: pinsVisible ? '#818cf8' : S.dim,
+              border: `1px solid ${pinsVisible ? '#4f46e5' : S.border}`,
+            }}
+          >
+            {pinsVisible ? '● Pins on' : '○ Pins off'}
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {comments.map((c, i) => {
@@ -449,7 +508,7 @@ function CommentsTab({ project, comments, sessions, colorFor }: {
             return (
               <button
                 key={c.id}
-                onClick={() => setActiveId(isActive ? null : c.id)}
+                onClick={() => handleCommentClick(c)}
                 className="w-full text-left rounded-xl p-3 transition-all"
                 style={{
                   background: isActive ? 'rgba(80,70,229,0.2)' : 'rgba(17,17,25,0.8)',
@@ -463,24 +522,14 @@ function CommentsTab({ project, comments, sessions, colorFor }: {
                   >
                     {i + 1}
                   </span>
-                  <span className="text-[10px] flex-1 truncate" style={{ color: S.muted }}>
+                  <span className="text-[10px] flex-1 truncate font-medium" style={{ color: '#e0e7ff' }}>
                     {session?.testerName ?? 'Unknown'}
                   </span>
                   <span className="text-[10px] flex-shrink-0" style={{ color: S.dim }}>
                     {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <p className="text-xs leading-relaxed" style={{ color: '#e0e7ff' }}>{c.text}</p>
-                {isActive && (
-                  <div className="mt-2 pt-2 space-y-1" style={{ borderTop: `1px solid ${S.border}` }}>
-                    {c.selector && (
-                      <code className="block text-[10px] truncate font-mono" style={{ color: S.dim }}>{c.selector}</code>
-                    )}
-                    {(c.screen || c.pageUrl) && (
-                      <code className="block text-[10px] truncate font-mono" style={{ color: S.dim }}>{c.screen || c.pageUrl}</code>
-                    )}
-                  </div>
-                )}
+                <p className="text-xs leading-relaxed" style={{ color: isActive ? '#c7d2fe' : S.muted }}>{c.text}</p>
               </button>
             )
           })}
