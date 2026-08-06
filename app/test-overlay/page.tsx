@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { Project } from '@/lib/types'
+import { ArgusLogo } from '@/components/ArgusLogo'
 import { TaskBar } from '@/lib/overlay/taskBar'
 import { mountCommentLayer, type Pin, type CommentLayerHandle } from '@/lib/overlay/commentLayer'
 import { attachRecorder, type RecorderHandle, type PathEvent } from '@/lib/overlay/recorder'
@@ -66,12 +67,12 @@ export default function TestOverlayPage() {
     : ''
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col" style={{ height: '100vh' }}>
+    <div className="min-h-screen flex flex-col" style={{ height: '100vh', background: '#0b0b13' }}>
       {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-950 px-5 h-12 flex items-center gap-3 shrink-0">
-        <div className="w-6 h-6 rounded bg-indigo-500 flex items-center justify-center text-white font-bold text-xs">A</div>
+      <header className="px-5 h-12 flex items-center gap-3 shrink-0 border-b" style={{ background: '#0e0e18', borderColor: '#1c1c2b' }}>
+        <ArgusLogo size={22} />
         <span className="text-white text-sm font-semibold">Argus</span>
-        <span className="text-gray-600 text-xs">/ Overlay test</span>
+        <span className="text-xs" style={{ color: '#3a3a52' }}>/ Overlay test</span>
         <div className="ml-auto flex items-center gap-2">
           <label className="text-gray-500 text-xs">Prototype</label>
           <select
@@ -118,7 +119,7 @@ export default function TestOverlayPage() {
         </div>
 
         {/* Sidebar */}
-        <aside className="w-72 border-l border-gray-800 flex flex-col shrink-0 overflow-hidden">
+        <aside className="w-72 flex flex-col shrink-0 overflow-hidden" style={{ borderLeft: '1px solid #1c1c2b' }}>
           {/* Pins */}
           <div className="p-3 border-b border-gray-800 shrink-0">
             <h3 className="text-gray-400 text-xs font-semibold uppercase tracking-wide mb-2">
