@@ -75,6 +75,17 @@ function IconSessions({ active }: { active: boolean }) {
   )
 }
 
+function IconPersonas({ active }: { active: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: active ? '#818cf8' : 'currentColor' }}>
+      <circle cx="5" cy="4" r="2" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M1 12c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+      <circle cx="10.5" cy="4.5" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M10.5 8c1.7 0 3 1.3 3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
 // ── Nav group + item types ─────────────────────────────────────────────────────
 
 type NavItem = {
@@ -101,6 +112,7 @@ export function ProjectNav({ project }: { project: Project }) {
       items: [
         { href: base, label: 'Dashboard', icon: IconDashboard, exact: true },
         { href: `${base}/scenarios`, label: 'Scenarios', icon: IconScenarios },
+        { href: `${base}/personas`, label: 'Personas', icon: IconPersonas },
         { href: `${base}/sessions`, label: 'Sessions', icon: IconSessions },
       ],
     },

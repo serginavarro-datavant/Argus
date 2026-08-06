@@ -12,6 +12,7 @@ export default async function ProjectDashboard({ params }: { params: Promise<{ i
   const checks       = prisma.check.findMany({ where: { projectId: id } })
   const comments     = prisma.comment.findMany({ where: { projectId: id } })
   const taskResults  = prisma.taskResult.findMany({ where: { projectId: id } })
+  const personas     = prisma.persona.findMany({ where: { projectId: id } })
 
   const serveUrl = `/serve/${id}/${project.uploadPath ? project.uploadPath + '/' : ''}${project.entryPath}`
 
@@ -23,6 +24,7 @@ export default async function ProjectDashboard({ params }: { params: Promise<{ i
       comments={comments}
       taskResults={taskResults}
       checks={checks}
+      personas={personas}
       serveUrl={serveUrl}
       projectId={id}
     />
